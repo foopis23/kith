@@ -1,0 +1,30 @@
+{
+	"compilerOptions": {
+		// Environment setup & latest features
+		"lib": ["ESNext"],
+		"target": "ES2022",
+		"module": "NodeNext",
+		"moduleResolution": "NodeNext",
+		"moduleDetection": "force",
+		"jsx": "react-jsx",
+		"allowJs": true,
+		"types": ["bun"],
+		// Emit: plain compiled JS mirroring src/ — runs under Node or Bun
+		"outDir": "dist",
+		"rootDir": "src",
+		"sourceMap": true,
+		// Best practices
+		"strict": true,
+		"strictNullChecks": true,
+		"skipLibCheck": true,
+		"noFallthroughCasesInSwitch": true,
+		"noUncheckedIndexedAccess": true,
+		"noImplicitOverride": true,
+		// Some stricter flags (disabled by default)
+		"noUnusedLocals": false,
+		"noUnusedParameters": false,
+		"noPropertyAccessFromIndexSignature": false
+	},
+	"include": ["src"],
+	"exclude": ["node_modules", "dist", "servers", "logs"]
+}
