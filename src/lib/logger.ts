@@ -30,6 +30,14 @@ try {
 export const logger = pino(
 	{
 		level: process.env.DEBUG ? "debug" : "info",
+		// Call sites log errors under `error`, but pino only applies its
+		// error serializer to `err` by default — under any other key an
+		// Error serializes as a plain object, silently dropping message,
+		// stack and cause (they're non-enumerable).
+		serializers: {
+			err: pino.stdSerializers.err,
+			error: pino.stdSerializers.err,
+		},
 	},
 	pino.destination(LOG_FILE),
 );

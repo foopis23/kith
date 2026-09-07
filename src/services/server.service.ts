@@ -5,7 +5,6 @@ import type { Readable } from "node:stream";
 import YAML from "yaml";
 import type z from "zod";
 import { config, serverPath } from "../lib/config.js";
-import { makeDir, writeFile } from "../lib/fs.js";
 import {
 	BACKUP_SERVICE_NAME,
 	BACKUPS_ENABLED_LABEL,
@@ -16,6 +15,7 @@ import {
 	PATCH_FILE_NAME,
 	SERVER_LABEL,
 } from "../lib/const.js";
+import { exists, makeDir, writeFile } from "../lib/fs.js";
 import { logger as globalLogger } from "../lib/logger.js";
 import {
 	type BackupState,
@@ -123,7 +123,7 @@ export async function getServer(
 	let composeFileExists = false;
 
 	try {
-		composeFileExists = await fs.exists(composeFilePath);
+		composeFileExists = await exists(composeFilePath);
 	} catch (rawErr) {
 		const err = rawErr as NodeJS.ErrnoException;
 
@@ -183,12 +183,12 @@ export async function getServerStatus(serverId: string): Promise<ServerStatus> {
 	const hasContainer = await isContainerCreated(serverId);
 	const info = hasContainer
 		? await pingMCServer(serverId).catch((err) => {
-				logger.warn(
-					{ error: err },
-					`Failed to ping server "${serverId}" while retrieving server info`,
-				);
-				return null;
-			})
+			logger.warn(
+				{ error: err },
+				`Failed to ping server "${serverId}" while retrieving server info`,
+			);
+			return null;
+		})
 		: null;
 
 	return {
@@ -460,7 +460,7 @@ function enqueueConfigUpdate<T>(
 	update: () => Promise<T>,
 ): Promise<T> {
 	const previous = configUpdateQueues.get(serverId) ?? Promise.resolve();
-	const run = previous.catch(() => {}).then(update);
+	const run = previous.catch(() => { }).then(update);
 	configUpdateQueues.set(serverId, run);
 	const cleanup = () => {
 		if (configUpdateQueues.get(serverId) === run) {
@@ -1309,8 +1309,8 @@ async function pingMCServer(serverId: string): Promise<ServerInfo | null> {
 async function generateServerId(): Promise<string> {
 	for (let attempt = 0; attempt < 5; attempt++) {
 		const id = crypto.randomUUID();
-		const exists = await fs.exists(serverPath(id));
-		if (!exists) {
+		const alreadyExists = await exists(serverPath(id));
+		if (!alreadyExists) {
 			return id;
 		}
 	}

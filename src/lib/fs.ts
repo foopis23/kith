@@ -59,6 +59,26 @@ async function applyOwnership(target: string): Promise<void> {
 		if (!isToleratedPermError(err)) throw err;
 	}
 }
+/**
+ * Portable promise-based existence check. Bun ships fs.promises.exists
+ * as an extension, but Node (which the published bin runs on) does not,
+ * so calling it crashes under Node. False only when the path is
+ * genuinely absent — permission errors (EACCES) still throw so callers
+ * can tell "missing" apart from "unreadable".
+ */
+export async function exists(target: string): Promise<boolean> {
+	try {
+		await fs.access(target);
+		return true;
+	} catch (rawErr) {
+		const err = rawErr as NodeJS.ErrnoException;
+		if (err.code === "ENOENT" || err.code === "ENOTDIR") {
+			return false;
+		}
+		throw rawErr;
+	}
+}
+
 /** Creates a directory (recursive) and applies setgid + ownership. */
 export async function makeDir(dir: string): Promise<void> {
 	await fs.mkdir(dir, { recursive: true, mode: DIR_MODE });
