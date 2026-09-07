@@ -9,7 +9,7 @@
 		"jsx": "react-jsx",
 		"allowJs": true,
 		"types": ["bun"],
-		// Emit: plain compiled JS mirroring src/ — runs under Node or Bun
+		// Emit: plain compiled JS mirroring src/ — runs under Bun
 		"outDir": "dist",
 		"rootDir": "src",
 		"sourceMap": true,

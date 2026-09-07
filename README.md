@@ -4,7 +4,7 @@ A terminal UI for running Minecraft servers that are meant to *stay* running. Ki
 
 ## Requirements
 
-- [Node.js](https://nodejs.org/) 22+ (or [Bun](https://bun.com) 1.4+)
+- [Bun](https://bun.com) 1.4+ (Node.js is not supported)
 - [Docker](https://www.docker.com/) with the Compose plugin
 
 ## Install
@@ -20,12 +20,11 @@ GitHub registry for the package scope (in `~/.npmrc`):
 The token needs the `read:packages` scope. Then:
 
 ```bash
-npm install -g @foopis23/kith
+bun install -g @foopis23/kith
 kith
 ```
 
-Upgrading is `npm install -g @foopis23/kith` again (or
-`npm update -g @foopis23/kith`).
+Upgrading is `bun install -g @foopis23/kith` again.
 
 ## Development setup
 
