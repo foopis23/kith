@@ -1,6 +1,6 @@
 {
 	"name": "@foopis23/kith",
-	"version": "0.1.0",
+	"version": "0.2.0",
 	"description": "Terminal UI for running persistent Dockerized Minecraft servers",
 	"license": "UNLICENSED",
 	"type": "module",
