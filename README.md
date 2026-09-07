@@ -109,12 +109,44 @@ Kith reads its configuration from environment variables:
 | `KITH_BASE_BACKUP_DEST` | _(unset — disables backups)_ | Base directory for backup repositories             |
 | `KITH_LOG_DIR`          | `/var/kith/logs`         | Application log directory                               |
 | `KITH_TMP_FILE_DIR`     | `$TMPDIR/kith`           | Cache directory (version manifests, Java version cache) |
+| `KITH_UID`              | _(your uid)_             | Numeric user id that owns created files; containers run as it |
+| `KITH_GID`              | _(your gid)_             | Numeric group id that owns created files; containers run as it |
+| `KITH_SECRET_FILE_MODE` | `660`                    | Octal mode for files carrying secrets (compose files, password scratch) |
 
 Backups run on the configured schedule only (`KITH_BACKUP_INTERVAL`, or `KITH_BACKUP_CRON_SCHEDULE` for clock-based timing) — starting a server does not trigger a backup, so frequently started and stopped servers don't pile up snapshots. The first backup lands one interval after the server starts.
 
+## File ownership and permissions
+
+Everything kith creates — server directories, compose files, logs — is owned by `KITH_UID:KITH_GID` (defaulting to the invoking user) and group-accessible: directories are `2770` (setgid, so the group propagates to anything created inside them later) and files are `0660`, including files carrying secrets (compose files with backup credentials, password scratch files). The default modes assume the primary install model — a shared group whose members all manage the servers — so group members get write access to everything. For a per-user install, set `KITH_SECRET_FILE_MODE` to `600` (owner-only) or `640` (group-read-only) to keep backup credentials to yourself.
+
+The same ids are passed to the containers: the `itzg/minecraft-server` image re-maps its internal `minecraft` user to `KITH_UID`/`KITH_GID` at startup and `chown`s `/data` to match, and the backup sidecar runs as `KITH_UID:KITH_GID` directly. Files the containers write into the bind-mounted data and backup directories therefore show up on the host with the same ownership as files kith writes itself — no permission drift between the two.
+
+### Shared multi-user setup
+
+To let several host users manage the same servers, put them in a shared group and point kith at it:
+
+```bash
+sudo groupadd minecraft
+sudo usermod -aG minecraft alice
+sudo usermod -aG minecraft bob
+sudo mkdir -p /var/kith/{servers,logs}
+sudo chown root:minecraft /var/kith/{servers,logs}
+```
+
+Then every user runs kith with `KITH_GID` set to the group's id (`getent group minecraft`):
+
+```bash
+export KITH_GID=1001   # the minecraft group's gid
+kith
+```
+
+The setgid bit on the directories keeps new files in the `minecraft` group no matter who (or which container) creates them, and the group-read/write modes let any member manage any server. Each user's files are owned by their own uid — `KITH_UID` defaults to whoever is running — so the world files show `alice:minecraft`, `bob:minecraft`, and so on.
+
+One caveat: **only one kith instance can manage a servers directory at a time.** Kith takes a lock (`$KITH_SERVERS_DIR/.kith.lock`) at startup and refuses to start if another instance holds it, so two admins can't race each other on compose rewrites and port allocation. If kith crashes without releasing the lock, the next start detects the stale lock and reclaims it automatically.
+
 ## Security
 
-Kith stores backup secrets — the restic repository password and any cloud backend credentials (AWS, B2, Azure, GCS) — in **plaintext in each server's `docker-compose.yml`**. The compose file is written `0640` (owner read/write, group read, no world access), but anyone who can read it holds those credentials, and anyone who can run `docker` on the host can extract them from the sidecar container's config regardless of file permissions.
+Kith stores backup secrets — the restic repository password and any cloud backend credentials (AWS, B2, Azure, GCS) — in **plaintext in each server's `docker-compose.yml`**. The compose file's mode is `KITH_SECRET_FILE_MODE` (`0660` by default — group-writable, matching the shared-group install model), but anyone who can read it holds those credentials, and anyone who can run `docker` on the host can extract them from the sidecar container's config regardless of file permissions.
 
 Practical guidance:
 
@@ -127,7 +159,7 @@ Practical guidance:
   sudo chmod 700 /var/kith/backups
   ```
   Note that "dedicated user" only meaningfully separates you from *other unprivileged users*. Anyone in the `docker` group is effectively root on the host — group-based access to docker is not a security boundary.
-- **Server-wide, multiple admins.** A shared group (e.g. `minecraft` with `2770` setgid directories) is the natural setup, and kith's files are already group-readable for it — but the owning *group* isn't configurable yet, so the group-read bit grants nothing in practice. Until that lands, multi-admin setups need to share the dedicated account (e.g. via `sudo -u kith`).
+- **Server-wide, multiple admins.** Use a shared group (e.g. `minecraft`) with `KITH_GID` pointed at it — see [File ownership and permissions](#file-ownership-and-permissions). Kith's files are group-accessible and its directories setgid, so any group member can manage any server. Treat group membership as the admin boundary: a member can manage every server, and can read the backup credentials in the compose files (or pull them from the sidecar with `docker inspect`). Only add people you'd trust with both. Note that anyone in the `docker` group is effectively root on the host regardless — group-based access to docker is not a security boundary.
 - **Use least-privilege backup credentials.** The cloud credentials kith forwards to the backup sidecar should be scoped to backups only: an IAM user limited to the backup bucket, a B2 *application key* (never the master key), an Azure SAS limited to the backup container. If they leak, the blast radius is your backup storage, not your cloud account.
 - **Don't reuse the restic password.** The restic password alone can't reach a remote repo (restic doesn't store backend credentials), but if you've reused it anywhere else, it just became a credential for those systems too.
 

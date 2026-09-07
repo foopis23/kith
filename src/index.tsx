@@ -9,6 +9,7 @@ import { useEffect } from "react";
 import { MemoryRouter, Route, Routes } from "react-router";
 import { ErrorQueueProvider } from "./components/Screen.js";
 import { validateConfig } from "./lib/config.js";
+import { acquireInstanceLock } from "./lib/lock.js";
 import { CreateServer } from "./views/CreateServer.view.js";
 import { ServerBackups } from "./views/ServerBackups.view.js";
 import { ServerDetails } from "./views/ServerDetails.view.js";
@@ -24,6 +25,10 @@ environmentManager.setIsServer(() => false);
 // it references before anything renders. Exits with an actionable
 // message on failure.
 validateConfig();
+
+// One kith process per serversDir — a shared multi-user install must
+// not have two instances racing on compose rewrites and port allocation.
+acquireInstanceLock();
 
 const queryClient = new QueryClient();
 

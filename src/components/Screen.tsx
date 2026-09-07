@@ -76,7 +76,7 @@ type ErrorQueue = {
 
 const ErrorQueueContext = createContext<ErrorQueue>({
 	current: null,
-	pushError: () => { },
+	pushError: () => {},
 });
 
 let nextErrorId = 0;

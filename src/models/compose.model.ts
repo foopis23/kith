@@ -13,6 +13,9 @@ export const containerIdSchema = z.string().regex(/^[0-9a-f]{12,64}$/i);
 export const composeServiceSchema = z.looseObject({
 	image: z.string(),
 	pull_policy: z.string().optional(),
+	// Container user, "uid:gid" — set on the backup sidecar so restic
+	// writes the local repo as the configured host identity.
+	user: z.string().optional(),
 	tty: z.boolean().optional(),
 	stdin_open: z.boolean().optional(),
 	labels: z.record(z.string(), z.string()).optional(),

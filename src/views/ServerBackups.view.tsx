@@ -135,107 +135,107 @@ export function ServerBackups() {
 
 	const items: MenuItem[] = confirmingUpdate
 		? [
-			actionItem({
-				label: "Yes, update to the global config",
-				pendingLabel: "Updating backup config…",
-				value: "confirm-update",
-				isPending: updateToGlobal.isPending,
-				onSelect: runUpdateToGlobal,
-			}),
-			{
-				label: "Cancel",
-				value: "cancel-update",
-				onSelect: () => setConfirmingUpdate(false),
-			},
-		]
-		: restoreMode === "pick"
-			? [
-				...listed.map((snapshot) => ({
-					label: snapshotLabel(snapshot),
-					value: `restore-${snapshot.id}`,
-					onSelect: () => {
-						setRestoreTarget(snapshot);
-						setRestoreMode("confirm");
-					},
-				})),
+				actionItem({
+					label: "Yes, update to the global config",
+					pendingLabel: "Updating backup config…",
+					value: "confirm-update",
+					isPending: updateToGlobal.isPending,
+					onSelect: runUpdateToGlobal,
+				}),
 				{
 					label: "Cancel",
-					value: "cancel-restore-pick",
-					onSelect: () => setRestoreMode(null),
+					value: "cancel-update",
+					onSelect: () => setConfirmingUpdate(false),
 				},
 			]
-			: restoreMode === "confirm"
-				? [
-					actionItem({
-						label: "Yes, restore this snapshot",
-						pendingLabel: "Restoring… (can take a while for large worlds)",
-						value: "confirm-restore",
-						isPending: restore.isPending,
-						onSelect: runRestore,
-					}),
+		: restoreMode === "pick"
+			? [
+					...listed.map((snapshot) => ({
+						label: snapshotLabel(snapshot),
+						value: `restore-${snapshot.id}`,
+						onSelect: () => {
+							setRestoreTarget(snapshot);
+							setRestoreMode("confirm");
+						},
+					})),
 					{
 						label: "Cancel",
-						value: "cancel-restore-confirm",
-						onSelect: () => setRestoreMode("pick"),
+						value: "cancel-restore-pick",
+						onSelect: () => setRestoreMode(null),
 					},
 				]
+			: restoreMode === "confirm"
+				? [
+						actionItem({
+							label: "Yes, restore this snapshot",
+							pendingLabel: "Restoring… (can take a while for large worlds)",
+							value: "confirm-restore",
+							isPending: restore.isPending,
+							onSelect: runRestore,
+						}),
+						{
+							label: "Cancel",
+							value: "cancel-restore-confirm",
+							onSelect: () => setRestoreMode("pick"),
+						},
+					]
 				: [
-					...(drift && !drift.globalDisabled
-						? [
-							{
-								label: "Update to global config",
-								value: "update-to-global",
-								onSelect: () => setConfirmingUpdate(true),
-							},
-						]
-						: []),
-					actionItem({
-						label: "Backup now",
-						pendingLabel: "Running backup...",
-						value: "backup-now",
-						isPending: backupNow.isPending,
-						onSelect: () =>
-							backupNow
-								.mutateAsync()
-								.catch((err: unknown) =>
-									pushError(
-										err instanceof Error
-											? err.message
-											: "Unknown backup failure",
+						...(drift && !drift.globalDisabled
+							? [
+									{
+										label: "Update to global config",
+										value: "update-to-global",
+										onSelect: () => setConfirmingUpdate(true),
+									},
+								]
+							: []),
+						actionItem({
+							label: "Backup now",
+							pendingLabel: "Running backup...",
+							value: "backup-now",
+							isPending: backupNow.isPending,
+							onSelect: () =>
+								backupNow
+									.mutateAsync()
+									.catch((err: unknown) =>
+										pushError(
+											err instanceof Error
+												? err.message
+												: "Unknown backup failure",
+										),
 									),
-								),
-					}),
-					...(snapshotsQuery.isSuccess && snapshots.length > 0
-						? [
-							{
-								label: "Restore a snapshot",
-								value: "restore",
-								onSelect: startRestorePick,
-							},
-						]
-						: []),
-					actionItem({
-						label: "Disable backups",
-						pendingLabel: "Disabling backups...",
-						value: "disable",
-						isPending: disableBackups.isPending,
-						onSelect: () =>
-							disableBackups
-								.mutateAsync()
-								.catch((err: unknown) =>
-									pushError(
-										err instanceof Error
-											? err.message
-											: "Unknown disable failure",
+						}),
+						...(snapshotsQuery.isSuccess && snapshots.length > 0
+							? [
+									{
+										label: "Restore a snapshot",
+										value: "restore",
+										onSelect: startRestorePick,
+									},
+								]
+							: []),
+						actionItem({
+							label: "Disable backups",
+							pendingLabel: "Disabling backups...",
+							value: "disable",
+							isPending: disableBackups.isPending,
+							onSelect: () =>
+								disableBackups
+									.mutateAsync()
+									.catch((err: unknown) =>
+										pushError(
+											err instanceof Error
+												? err.message
+												: "Unknown disable failure",
+										),
 									),
-								),
-					}),
-					{
-						label: "Back",
-						value: "back",
-						onSelect: () => navigate(`/servers/${serverId}`),
-					},
-				];
+						}),
+						{
+							label: "Back",
+							value: "back",
+							onSelect: () => navigate(`/servers/${serverId}`),
+						},
+					];
 
 	if (!server) {
 		return (

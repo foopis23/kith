@@ -14,6 +14,31 @@ const env = z
 		KITH_BACKUP_PRUNE_RETENTION: z.string().optional(),
 		KITH_LOG_DIR: z.string().default("/var/kith/logs"),
 		KITH_TMP_FILE_DIR: z.string().default(path.join(os.tmpdir(), "kith")),
+		// Ownership for everything kith and its containers create. Both are
+		// numeric IDs (not names) so the values are unambiguous on the host
+		// and inside containers, where the names may not resolve. Default to
+		// the invoking user so a single-user install needs no configuration.
+		// process.getuid/getgid are POSIX-only; on platforms without them
+		// (Windows) fall back to -1, which skips chown entirely.
+		KITH_UID: z.coerce
+			.number()
+			.int()
+			.default(process.getuid?.() ?? -1),
+		KITH_GID: z.coerce
+			.number()
+			.int()
+			.default(process.getgid?.() ?? -1),
+		// Mode for secret-bearing files (compose files with backup
+		// credentials, password scratch files), as an octal string.
+		// Defaults to group-writable like every other file: the primary
+		// install model is a shared group managing the servers together,
+		// so group members need write access to reconfigure servers.
+		// Tighten it (e.g. "640" or "600") for a per-user install.
+		KITH_SECRET_FILE_MODE: z
+			.string()
+			.regex(/^[0-7]{3}$/, "must be three octal digits, e.g. \"660\"")
+			.default("660")
+			.transform((v) => Number.parseInt(v, 8)),
 	})
 	.parse(process.env);
 
@@ -45,6 +70,22 @@ export const config = {
 	/** mc-backup's PRUNE_RESTIC_RETENTION (ie. "--keep-within 7d"). */
 	backupPruneRetention: env.KITH_BACKUP_PRUNE_RETENTION || undefined,
 	tmpFileDir: env.KITH_TMP_FILE_DIR,
+	/**
+	 * Ownership applied to every file and directory kith creates, and to
+	 * the identity the mc/backup containers run as (so the files they
+	 * write into bind mounts are owned the same way on the host). For a
+	 * shared multi-user install, set KITH_GID to the shared group and
+	 * point the dirs at a group-writable location; kith applies the
+	 * setgid bit to directories so the group propagates to new files.
+	 */
+	uid: env.KITH_UID,
+	gid: env.KITH_GID,
+	/**
+	 * Mode applied to secret-bearing files. Group-writable by default so
+	 * a shared group can manage servers; set KITH_SECRET_FILE_MODE to
+	 * restrict (e.g. 0o640 for group-read-only, 0o600 for owner-only).
+	 */
+	secretFileMode: env.KITH_SECRET_FILE_MODE,
 	version: loadVersionNumber(),
 } as const;
 
@@ -132,7 +173,44 @@ export function validateConfig(): void {
 
 	for (const { dir, envVar } of dirs) {
 		try {
-			fs.mkdirSync(dir, { recursive: true });
+			// Setgid so the shared group propagates to files created inside
+			// later (by kith, a container bind mount, or a user by hand).
+			// chown to a foreign id needs privileges — tolerated when it
+			// fails so a single-user install (defaults already match) never
+			// trips on it. Kept self-contained here rather than in lib/fs
+			// to avoid a config <-> fs import cycle.
+			fs.mkdirSync(dir, { recursive: true, mode: 0o2770 });
+			// chown before chmod: chown clears the setgid bit (POSIX
+			// security behavior), so the mode must be applied last.
+			// -1 means no real id (non-POSIX) — skip chown entirely.
+			if (config.uid >= 0 && config.gid >= 0) {
+				try {
+					fs.chownSync(dir, config.uid, config.gid);
+				} catch (chownErr) {
+					const chownCode = (chownErr as NodeJS.ErrnoException).code;
+					if (
+						chownCode !== "EPERM" &&
+						chownCode !== "EINVAL" &&
+						chownCode !== "ENOENT"
+					) {
+						throw chownErr;
+					}
+				}
+			}
+			// Tolerated like chown: a group member who doesn't own the
+			// dir can't chmod it, but it's still usable via group bits.
+			try {
+				fs.chmodSync(dir, 0o2770);
+			} catch (chmodErr) {
+				const chmodCode = (chmodErr as NodeJS.ErrnoException).code;
+				if (
+					chmodCode !== "EPERM" &&
+					chmodCode !== "EINVAL" &&
+					chmodCode !== "ENOENT"
+				) {
+					throw chmodErr;
+				}
+			}
 			fs.accessSync(dir, fs.constants.R_OK | fs.constants.W_OK);
 		} catch (err) {
 			const code = (err as NodeJS.ErrnoException).code ?? "unknown error";

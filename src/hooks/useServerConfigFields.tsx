@@ -135,9 +135,9 @@ export function useServerConfigFields(serverId: string, enabled: boolean) {
 			wanted === "latest"
 				? versions.find((version) => version.version_type === "release")
 				: versions.find(
-					(version) =>
-						version.id === wanted || version.version_number === wanted,
-				);
+						(version) =>
+							version.id === wanted || version.version_number === wanted,
+					);
 		return match?.game_versions
 			? JavaService.getNewestGameVersion(match.game_versions)
 			: null;
@@ -231,32 +231,32 @@ export function useServerConfigFields(serverId: string, enabled: boolean) {
 
 		const versionField: FormField = isModrinth
 			? comboboxField({
-				id: "modpack_version",
-				type: "combobox",
-				label: "Modpack version",
-				items: modpackVersionOptions,
-				labelKey: "label",
-				searchKeys: ["label"],
-				loading: modpackVersionsQuery.isPending,
-				loadingMessage: "Loading versions…",
-				value: selectedModpackVersion,
-				onSelect: (selected) => patch({ modpackVersion: selected.id }),
-				renderItem: renderModpackVersionOption,
-			})
+					id: "modpack_version",
+					type: "combobox",
+					label: "Modpack version",
+					items: modpackVersionOptions,
+					labelKey: "label",
+					searchKeys: ["label"],
+					loading: modpackVersionsQuery.isPending,
+					loadingMessage: "Loading versions…",
+					value: selectedModpackVersion,
+					onSelect: (selected) => patch({ modpackVersion: selected.id }),
+					renderItem: renderModpackVersionOption,
+				})
 			: comboboxField({
-				id: "version",
-				type: "combobox",
-				label: "Version",
-				items: gameVersionItems,
-				labelKey: "id",
-				searchKeys: ["id"],
-				loading: vanillaVersionsQuery.isPending,
-				loadingMessage: "Loading versions…",
-				value: gameVersionItems.find(
-					(item) => item.id.toLowerCase() === config?.version?.toLowerCase(),
-				),
-				onSelect: (item) => patch({ version: item.id }),
-			});
+					id: "version",
+					type: "combobox",
+					label: "Version",
+					items: gameVersionItems,
+					labelKey: "id",
+					searchKeys: ["id"],
+					loading: vanillaVersionsQuery.isPending,
+					loadingMessage: "Loading versions…",
+					value: gameVersionItems.find(
+						(item) => item.id.toLowerCase() === config?.version?.toLowerCase(),
+					),
+					onSelect: (item) => patch({ version: item.id }),
+				});
 
 		return [
 			versionField,
@@ -381,8 +381,9 @@ export function useServerConfigFields(serverId: string, enabled: boolean) {
 		// version for vanilla-style servers, the pack version (and the
 		// game version it targets) for MODRINTH servers.
 		const requirement = isModrinth
-			? `modpack version "${config?.modpackVersion ?? "latest"}"${modpackGameVersion ? ` (Minecraft ${modpackGameVersion})` : ""
-			}`
+			? `modpack version "${config?.modpackVersion ?? "latest"}"${
+					modpackGameVersion ? ` (Minecraft ${modpackGameVersion})` : ""
+				}`
 			: `Minecraft ${config?.version}`;
 
 		return `Image tag "${tag}" is Java ${tagMajor}, but ${requirement} needs Java ${requiredMajor} ("${requiredTag}") — the server may fail to start.`;

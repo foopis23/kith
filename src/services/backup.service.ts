@@ -16,6 +16,7 @@ import {
 	MC_SERVICE_NAME,
 } from "../lib/const.js";
 import { logger as globalLogger } from "../lib/logger.js";
+import { makeDir, writeFile } from "../lib/fs.js";
 import {
 	BackupCredentialMigrationUnsupportedError,
 	type BackupDrift,
@@ -174,6 +175,13 @@ export function buildBackupServiceConfig(
 		// Restic ties snapshots and pruning to a hostname; pin it to the
 		// server id so it stays stable across container recreations.
 		hostname: serverId,
+		// Run restic as the configured host identity so the local backup
+		// repo it writes is owned uid:gid on the host (shared-group
+		// installs), matching the mc container's data files. Skipped when
+		// no real id is configured (non-POSIX host).
+		...(config.uid >= 0 && config.gid >= 0
+			? { user: `${config.uid}:${config.gid}` }
+			: {}),
 		depends_on: { [MC_SERVICE_NAME]: { condition: "service_healthy" } },
 		environment,
 		volumes: remote
@@ -400,16 +408,16 @@ export async function migrateToGlobalConfig(
 	// the same secrets persistently (see README's Security section).
 	const scratch = path.join(config.tmpFileDir, `migrate-${serverId}`);
 	await fs.rm(scratch, { recursive: true, force: true });
-	await fs.mkdir(scratch, { recursive: true });
-	await fs.writeFile(
+	await makeDir(scratch);
+	await writeFile(
 		path.join(scratch, "old-password"),
 		oldEnvironment.RESTIC_PASSWORD ?? "",
-		{ mode: 0o600 },
+		{ secret: true },
 	);
-	await fs.writeFile(
+	await writeFile(
 		path.join(scratch, "new-password"),
 		newEnvironment.RESTIC_PASSWORD ?? "",
-		{ mode: 0o600 },
+		{ secret: true },
 	);
 
 	// Each restic invocation needs its backend credentials (AWS keys, …)
@@ -432,10 +440,10 @@ export async function migrateToGlobalConfig(
 	// nothing can read.
 	const script = repoChanged
 		? // New location: init the new repo, then copy the history over.
-		// NEW_REPO is the new repo's in-container path, which differs
-		// from the sidecar env's RESTIC_REPOSITORY for local
-		// destinations (see above).
-		`
+			// NEW_REPO is the new repo's in-container path, which differs
+			// from the sidecar env's RESTIC_REPOSITORY for local
+			// destinations (see above).
+			`
 set -eu
 export RESTIC_REPOSITORY="$NEW_REPO"
 export RESTIC_PASSWORD="$NEW_RESTIC_PASSWORD"
@@ -451,8 +459,8 @@ elif [ "$rc" != "10" ]; then
 fi
 `.trim()
 		: // Same repo, new password: re-key in place, keeping every
-		// snapshot.
-		`
+			// snapshot.
+			`
 set -eu
 export RESTIC_REPOSITORY="$OLD_RESTIC_REPOSITORY"
 export RESTIC_PASSWORD="$OLD_RESTIC_PASSWORD"
@@ -535,14 +543,14 @@ export async function listSnapshots(
 	const running = await isBackupContainerRunning(dir);
 	const result = running
 		? await ComposeService.exec(
-			BACKUP_SERVICE_NAME,
-			"restic snapshots --json",
-			{ cwd: dir },
-		)
+				BACKUP_SERVICE_NAME,
+				"restic snapshots --json",
+				{ cwd: dir },
+			)
 		: await ComposeService.run(BACKUP_SERVICE_NAME, "snapshots --json", {
-			cwd: dir,
-			commandOptions: ["--rm", "--no-deps", "--entrypoint", "restic"],
-		});
+				cwd: dir,
+				commandOptions: ["--rm", "--no-deps", "--entrypoint", "restic"],
+			});
 
 	if (!result) {
 		const err = new FailedToListSnapshotsError(serverId);
@@ -686,7 +694,7 @@ export async function restoreSnapshot(
 	const environment = sidecar.environment ?? {};
 
 	const dataDir = path.join(dir, DATA_DIR_NAME);
-	await fs.mkdir(dataDir, { recursive: true });
+	await makeDir(dataDir);
 
 	const args = [
 		"run",

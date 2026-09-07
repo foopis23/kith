@@ -1,23 +1,23 @@
-import fs from "node:fs";
 import path from "node:path";
 import pino from "pino";
 import { config } from "./config.js";
+import { makeDirSync } from "./fs.js";
 
 let LOG_FILE: string;
 try {
-	fs.mkdirSync(config.logDir, { recursive: true });
+	makeDirSync(config.logDir);
 	LOG_FILE = path.join(config.logDir, "app.log");
 } catch (err) {
 	const fallback = path.resolve("data", "logs", "app.log");
 	try {
-		fs.mkdirSync(path.dirname(fallback), { recursive: true });
+		makeDirSync(path.dirname(fallback));
 	} catch (innerErr) {
 		const code =
 			(innerErr as NodeJS.ErrnoException).code ??
 			(err as NodeJS.ErrnoException).code;
 		throw new Error(
 			`Cannot create a log directory — tried "${config.logDir}" and fallback "./data/logs". ` +
-			`Last error: ${code}. Fix permissions on one of them, or set DF_LOG_DIR to a writable path.`,
+				`Last error: ${code}. Fix permissions on one of them, or set KITH_LOG_DIR to a writable path.`,
 			{ cause: innerErr },
 		);
 	}

@@ -5,6 +5,7 @@ import type { Readable } from "node:stream";
 import YAML from "yaml";
 import type z from "zod";
 import { config, serverPath } from "../lib/config.js";
+import { makeDir, writeFile } from "../lib/fs.js";
 import {
 	BACKUP_SERVICE_NAME,
 	BACKUPS_ENABLED_LABEL,
@@ -182,12 +183,12 @@ export async function getServerStatus(serverId: string): Promise<ServerStatus> {
 	const hasContainer = await isContainerCreated(serverId);
 	const info = hasContainer
 		? await pingMCServer(serverId).catch((err) => {
-			logger.warn(
-				{ error: err },
-				`Failed to ping server "${serverId}" while retrieving server info`,
-			);
-			return null;
-		})
+				logger.warn(
+					{ error: err },
+					`Failed to ping server "${serverId}" while retrieving server info`,
+				);
+				return null;
+			})
 		: null;
 
 	return {
@@ -211,7 +212,7 @@ export async function createVanillaServer(
 		const dir = serverPath(id);
 		const dockerComposeFilePath = path.resolve(dir, "docker-compose.yml");
 
-		await fs.mkdir(dir, { recursive: true });
+		await makeDir(dir);
 
 		if (!server_port) {
 			server_port = await getAvailablePort();
@@ -243,6 +244,15 @@ export async function createVanillaServer(
 						MEMORY: memory,
 						USE_AIKAR_FLAGS: "TRUE",
 						PATCH_DEFINITIONS: PATCH_FILE_CONTAINER_PATH,
+						// Run the server as the configured host identity so files
+						// written into the bind-mounted data dir are owned
+						// uid:gid on the host (shared-group installs). The image's
+						// entrypoint re-maps its minecraft user to these and
+						// chowns /data to match. Skipped when no real id is
+						// configured (non-POSIX host) — the image default applies.
+						...(config.uid >= 0 && config.gid >= 0
+							? { UID: `${config.uid}`, GID: `${config.gid}` }
+							: {}),
 					},
 					volumes: [
 						`./${DATA_DIR_NAME}:/data`,
@@ -252,14 +262,13 @@ export async function createVanillaServer(
 				...(backupService ? { [BACKUP_SERVICE_NAME]: backupService } : {}),
 			},
 		};
-
-		await fs.writeFile(
+		await writeFile(
 			dockerComposeFilePath,
 			YAML.stringify(composeConfig, { indent: 2 }),
+			{ secret: true },
 		);
-		await fs.mkdir(path.resolve(dir, DATA_DIR_NAME), { recursive: true });
+		await makeDir(path.resolve(dir, DATA_DIR_NAME));
 		await ensurePatchFile(dir);
-
 		if (backupService) {
 			// Eagerly init the restic repo so a broken global backup config
 			// surfaces at creation. Non-fatal: the sidecar retries on start.
@@ -299,7 +308,7 @@ export async function createModrinthServer(
 		const dir = serverPath(id);
 		const dockerComposeFilePath = path.resolve(dir, "docker-compose.yml");
 
-		await fs.mkdir(dir, { recursive: true });
+		await makeDir(dir);
 
 		if (!server_port) {
 			server_port = await getAvailablePort();
@@ -341,6 +350,10 @@ export async function createModrinthServer(
 						MEMORY: memory,
 						USE_AIKAR_FLAGS: "TRUE",
 						PATCH_DEFINITIONS: PATCH_FILE_CONTAINER_PATH,
+						// Same host-identity mapping as the vanilla path above.
+						...(config.uid >= 0 && config.gid >= 0
+							? { UID: `${config.uid}`, GID: `${config.gid}` }
+							: {}),
 					},
 					volumes: [
 						`./${DATA_DIR_NAME}:/data`,
@@ -351,11 +364,12 @@ export async function createModrinthServer(
 			},
 		};
 
-		await fs.writeFile(
+		await writeFile(
 			dockerComposeFilePath,
 			YAML.stringify(composeConfig, { indent: 2 }),
+			{ secret: true },
 		);
-		await fs.mkdir(path.resolve(dir, DATA_DIR_NAME), { recursive: true });
+		await makeDir(path.resolve(dir, DATA_DIR_NAME));
 		await ensurePatchFile(dir);
 
 		if (backupService) {
@@ -446,7 +460,7 @@ function enqueueConfigUpdate<T>(
 	update: () => Promise<T>,
 ): Promise<T> {
 	const previous = configUpdateQueues.get(serverId) ?? Promise.resolve();
-	const run = previous.catch(() => { }).then(update);
+	const run = previous.catch(() => {}).then(update);
 	configUpdateQueues.set(serverId, run);
 	const cleanup = () => {
 		if (configUpdateQueues.get(serverId) === run) {
@@ -852,7 +866,7 @@ async function ensurePatchFile(dir: string): Promise<void> {
 	const patchPath = path.resolve(dir, PATCH_FILE_NAME);
 	try {
 		// wx: create-only — a user's patch content is never clobbered.
-		await fs.writeFile(patchPath, EMPTY_PATCH_SET, { flag: "wx" });
+		await writeFile(patchPath, EMPTY_PATCH_SET, { flag: "wx" });
 	} catch (rawErr) {
 		const err = rawErr as NodeJS.ErrnoException;
 		if (err.code === "EEXIST") {
@@ -866,7 +880,7 @@ async function ensurePatchFile(dir: string): Promise<void> {
 			// starts.
 			try {
 				await fs.rmdir(patchPath);
-				await fs.writeFile(patchPath, EMPTY_PATCH_SET);
+				await writeFile(patchPath, EMPTY_PATCH_SET);
 			} catch (recoveryErr) {
 				logger.warn(
 					{ error: recoveryErr, path: patchPath },
@@ -969,18 +983,13 @@ async function saveComposeConfig(
 	composeConfig: KithComposeConfig,
 ): Promise<void> {
 	const dir = serverPath(serverId);
-	await fs.writeFile(
+	await writeFile(
 		path.resolve(dir, "docker-compose.yml"),
 		YAML.stringify(composeConfig, { indent: 2 }),
-		// 0o640: the compose file carries the restic password and any
-		// cloud credentials for the backup backend (see README's
-		// Security section). Group access is inert while the group is
-		// just the owner's own; it's there so a shared "minecraft"
-		// group gets read access once the owning group is configurable.
-		// TODO: make the owning group configurable — until then the
-		// group-read bit grants nothing in practice. Applies to every
-		// file kith creates (server dirs, logs, …), not just this one.
-		{ mode: 0o640 },
+		// The compose file carries the restic password and any cloud
+		// credentials for the backup backend (see README's Security
+		// section), so it's group-read-only rather than group-writable.
+		{ secret: true },
 	);
 }
 
