@@ -38,3 +38,5 @@ servers/
 data/
 tmp/
 backups/
+docs/.vitepress/cache
+docs/.vitepress/dist

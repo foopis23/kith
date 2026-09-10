@@ -1,6 +1,6 @@
 # Configuration reference
 
-Kith is configured entirely through environment variables. See [Installation](installation.md) for which ones matter per install model. This page is the complete reference.
+Kith is configured entirely through environment variables. See [Installation](installation.md) for which ones matter per install model. This page lists them all.
 
 ## Directories
 

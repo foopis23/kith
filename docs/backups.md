@@ -4,6 +4,22 @@ Kith backs servers up with [restic](https://restic.net/), running in a sidecar c
 
 Backups are opt-in globally. Nothing is backed up until you set a destination.
 
+## How it works
+
+Backups are configured once, globally, and applied to every server. Set a destination and a schedule in kith's environment and you're done. You never set up backups for an individual server.
+
+Each server gets its own restic repository at `<KITH_BASE_BACKUP_DEST>/<server id>` and its own backup sidecar (the itzg mc-backup image) that snapshots the server's data directory on the schedule. The sidecar initializes the repository itself on first run, so there's no setup step beyond adding it.
+
+Because the config is global, kith keeps every server's sidecar in sync with it:
+
+- **New servers** get a backup sidecar automatically as soon as a destination is set.
+- **Existing servers** are compared against the current global config. When a server's sidecar no longer matches (destination, schedule, password, or backend credentials changed), kith flags it on the server's screen and offers to migrate the sidecar to the new config, moving the existing snapshot history along to the new destination.
+- **If backups are turned off globally,** servers that still have a sidecar keep backing up on their last config until you decide per server: keep backing up, or remove the sidecar.
+
+Servers can opt out individually. Disabling backups for a server removes its sidecar but keeps the repository, so re-enabling picks up where it left off. The choice is recorded as a label on the compose project, so an opted-out server isn't nagged to set backups up again.
+
+One thing to know before changing a global setting: the **password** is baked into each repository when it's initialized. Kith can update a sidecar's destination or schedule in place, but if you change `KITH_BACKUP_PASSWORD` your existing repositories can't be opened with the new password. Keep the old one for restores, or start fresh at a new destination.
+
 ## Enabling backups
 
 Two variables turn backups on:
@@ -15,8 +31,6 @@ export KITH_BACKUP_PASSWORD='a-long-random-password'
 
 - `KITH_BASE_BACKUP_DEST` sets where repositories live. Each server gets its own repository at `<dest>/<server id>`. A plain path is a local directory. A URL with a scheme prefix (`s3:`, `b2:`, `azure:`, `gs:`, `rclone:`) is a remote restic repository.
 - `KITH_BACKUP_PASSWORD` is the password every repository is encrypted with. Required when a destination is set, and kith refuses to start without it. Don't reuse this password anywhere else.
-
-Servers created after this is set get a backup sidecar automatically. For existing servers, kith detects that the global backup config changed and offers to migrate them, including moving an existing repository's history to the new destination.
 
 ## Schedule and retention
 

@@ -1,5 +1,12 @@
 # Installation
 
+## Requirements
+
+- [Bun](https://bun.com) 1.4+ (Node.js is not supported)
+- [Docker](https://www.docker.com/) with the Compose plugin
+
+The user running kith needs permission to use Docker. Kith shells out to `docker` and `docker compose` for everything, so add yourself to the `docker` group (or run rootless Docker) before starting.
+
 Kith is configured entirely through environment variables, and how you install determines which ones you need to set. There are two models:
 
 - **Per-user install (default).** Kith follows the [XDG Base Directory Specification](https://specifications.freedesktop.org/basedir/latest/). Everything lives under the invoking user's home directory, with nothing to configure.
