@@ -17,9 +17,9 @@ import * as ModrinthService from "./modrinth.service.js";
 import * as VanillaService from "./vanilla.service.js";
 
 const logger = globalLogger.child({ service: "java.service.ts" });
-const cacheFilePath = path.resolve(config.tmpFileDir, "java_versions.json");
+const cacheFilePath = path.resolve(config.cacheDir, "java_versions.json");
 const imageTagsCacheFilePath = path.resolve(
-	config.tmpFileDir,
+	config.cacheDir,
 	"java_image_tags.json",
 );
 
@@ -328,7 +328,7 @@ async function readCachedImageTags(): Promise<JavaImageTagsCache | null> {
 async function writeCachedImageTags(tags: string[]) {
 	try {
 		const cache: JavaImageTagsCache = { fetchedAt: Date.now(), tags };
-		await fs.mkdir(config.tmpFileDir, { recursive: true });
+		await fs.mkdir(config.cacheDir, { recursive: true });
 		await fs.writeFile(imageTagsCacheFilePath, JSON.stringify(cache), "utf-8");
 	} catch (err) {
 		logger.warn({ error: err }, "Failed to write cached java image tags");
@@ -339,7 +339,7 @@ async function writeCachedJavaVersion(mcVersion: string, major: number) {
 	try {
 		const cached = await readCachedJavaVersions();
 		cached[mcVersion] = major;
-		await fs.mkdir(config.tmpFileDir, { recursive: true });
+		await fs.mkdir(config.cacheDir, { recursive: true });
 		await fs.writeFile(cacheFilePath, JSON.stringify(cached), "utf-8");
 	} catch (err) {
 		logger.warn({ error: err }, "Failed to write cached java versions");

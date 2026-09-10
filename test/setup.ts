@@ -15,6 +15,7 @@ if (process.env.KITH_INTEGRATION_TEST === "1") {
 	process.env.KITH_SERVERS_DIR = path.join(workDir, "servers");
 	process.env.KITH_LOG_DIR = path.join(workDir, "logs");
 	process.env.KITH_TMP_FILE_DIR = path.join(workDir, "tmp");
+	process.env.KITH_CACHE_DIR = path.join(workDir, "cache");
 	process.env.KITH_BASE_BACKUP_DEST = path.join(workDir, "backups");
 	process.env.KITH_BACKUP_PASSWORD = "integration-test-password";
 }

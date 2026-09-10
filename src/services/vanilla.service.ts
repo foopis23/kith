@@ -10,10 +10,7 @@ import {
 
 const logger = globalLogger.child({ service: "version.service.ts" });
 const cacheDuration = 1000 * 60 * 60; // 1 hour in milliseconds
-const cacheFilePath = path.resolve(
-	config.tmpFileDir,
-	"version_manifest_v2.json",
-);
+const cacheFilePath = path.resolve(config.cacheDir, "version_manifest_v2.json");
 
 //#region Public API
 export async function getVanillaVersions(
@@ -52,7 +49,7 @@ async function fetchVanillaVersions(): Promise<VanillaVersions> {
 	const validated = vanillaVersionsSchema.parse(json);
 
 	try {
-		await createTmpFileDir();
+		await createCacheDir();
 		await fs.writeFile(
 			cacheFilePath,
 			JSON.stringify({
@@ -82,9 +79,9 @@ async function readCachedVanillaVersions() {
 	}
 }
 
-async function createTmpFileDir() {
-	if (!(await fs.stat(config.tmpFileDir).catch(() => false))) {
-		await fs.mkdir(config.tmpFileDir, { recursive: true });
+async function createCacheDir() {
+	if (!(await fs.stat(config.cacheDir).catch(() => false))) {
+		await fs.mkdir(config.cacheDir, { recursive: true });
 	}
 }
 

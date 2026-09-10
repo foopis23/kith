@@ -4,22 +4,38 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import z from "zod";
 
+/**
+ * Based on XDG Base Directory Specification.
+ *
+ * @see https://specifications.freedesktop.org/basedir/latest/
+ */
+const xdg = z
+	.object({
+		XDG_DATA_HOME: z.string().catch(path.join(os.homedir(), ".local/share")),
+		XDG_STATE_HOME: z.string().catch(path.join(os.homedir(), ".local/state")),
+		XDG_CACHE_HOME: z.string().catch(path.join(os.homedir(), ".cache")),
+	})
+	.parse(process.env);
+
+/**
+ * Environment variables for configuring kith.
+ */
 const env = z
 	.object({
-		KITH_SERVERS_DIR: z.string().default("/var/kith/servers"),
+		KITH_SERVERS_DIR: z
+			.string()
+			.default(path.join(xdg.XDG_DATA_HOME, "kith/servers")),
+		KITH_LOG_DIR: z
+			.string()
+			.default(path.join(xdg.XDG_STATE_HOME, "kith/logs")),
+		KITH_CACHE_DIR: z.string().default(path.join(xdg.XDG_CACHE_HOME, "kith")),
+		KITH_TMP_FILE_DIR: z.string().default(path.join(os.tmpdir(), "kith")),
+
 		KITH_BASE_BACKUP_DEST: z.string().optional(),
 		KITH_BACKUP_PASSWORD: z.string().optional(),
 		KITH_BACKUP_INTERVAL: z.string().default("24h"),
 		KITH_BACKUP_CRON_SCHEDULE: z.string().optional(),
 		KITH_BACKUP_PRUNE_RETENTION: z.string().optional(),
-		KITH_LOG_DIR: z.string().default("/var/kith/logs"),
-		KITH_TMP_FILE_DIR: z.string().default(path.join(os.tmpdir(), "kith")),
-		// Ownership for everything kith and its containers create. Both are
-		// numeric IDs (not names) so the values are unambiguous on the host
-		// and inside containers, where the names may not resolve. Default to
-		// the invoking user so a single-user install needs no configuration.
-		// process.getuid/getgid are POSIX-only; on platforms without them
-		// (Windows) fall back to -1, which skips chown entirely.
 		KITH_UID: z.coerce
 			.number()
 			.int()
@@ -28,67 +44,36 @@ const env = z
 			.number()
 			.int()
 			.default(process.getgid?.() ?? -1),
-		// Mode for secret-bearing files (compose files with backup
-		// credentials, password scratch files), as an octal string.
-		// Defaults to group-writable like every other file: the primary
-		// install model is a shared group managing the servers together,
-		// so group members need write access to reconfigure servers.
-		// Tighten it (e.g. "640" or "600") for a per-user install.
 		KITH_SECRET_FILE_MODE: z
 			.string()
-			.regex(/^[0-7]{3}$/, "must be three octal digits, e.g. \"660\"")
-			.default("660")
+			.regex(/^[0-7]{3}$/, 'must be three octal digits, e.g. "600"')
+			.default("600")
 			.transform((v) => Number.parseInt(v, 8)),
 	})
 	.parse(process.env);
 
+/**
+ * Application Level Read Only Config Object
+ */
 export const config = {
 	serversDir: env.KITH_SERVERS_DIR,
 	logDir: env.KITH_LOG_DIR,
-	/**
-	 * Base location for backup repositories — a local directory or a
-	 * restic repository URL prefix (s3:, b2:, rclone:, …). Each server's
-	 * repo lives at `<baseBackupDest>/<server_id>`. Unset (or empty)
-	 * disables backups globally. Local destinations are resolved to an
-	 * absolute path: the sidecar bind-mounts this from each server's
-	 * directory, where docker compose would resolve a relative one.
-	 */
 	baseBackupDest: normalizeBackupDest(env.KITH_BASE_BACKUP_DEST),
-	/**
-	 * Global restic repository password. Required when backups are
-	 * enabled (KITH_BASE_BACKUP_DEST set) — enforced at startup by
-	 * validateConfig.
-	 */
 	backupPassword: env.KITH_BACKUP_PASSWORD || undefined,
-	/** mc-backup's BACKUP_INTERVAL (sleep format, ie. "24h", "2h 30m"). */
 	backupInterval: env.KITH_BACKUP_INTERVAL,
-	/**
-	 * mc-backup's CRON_SCHEDULE (ie. "0 4 * * *"). When set it overrides
-	 * backupInterval inside the sidecar.
-	 */
 	backupCronSchedule: env.KITH_BACKUP_CRON_SCHEDULE || undefined,
-	/** mc-backup's PRUNE_RESTIC_RETENTION (ie. "--keep-within 7d"). */
 	backupPruneRetention: env.KITH_BACKUP_PRUNE_RETENTION || undefined,
 	tmpFileDir: env.KITH_TMP_FILE_DIR,
-	/**
-	 * Ownership applied to every file and directory kith creates, and to
-	 * the identity the mc/backup containers run as (so the files they
-	 * write into bind mounts are owned the same way on the host). For a
-	 * shared multi-user install, set KITH_GID to the shared group and
-	 * point the dirs at a group-writable location; kith applies the
-	 * setgid bit to directories so the group propagates to new files.
-	 */
+	cacheDir: env.KITH_CACHE_DIR,
 	uid: env.KITH_UID,
 	gid: env.KITH_GID,
-	/**
-	 * Mode applied to secret-bearing files. Group-writable by default so
-	 * a shared group can manage servers; set KITH_SECRET_FILE_MODE to
-	 * restrict (e.g. 0o640 for group-read-only, 0o600 for owner-only).
-	 */
 	secretFileMode: env.KITH_SECRET_FILE_MODE,
 	version: loadVersionNumber(),
 } as const;
 
+/**
+ * Environment variables that need to be forwarded to the backup sidecar.
+ */
 export const resticEnv = z
 	.object({
 		AWS_ACCESS_KEY_ID: z.string().optional(),
@@ -112,6 +97,12 @@ export const resticEnv = z
  */
 export const resticEnvKeys = Object.keys(resticEnv);
 
+/**
+ * Returns the full path to the server's directory.
+ *
+ * @param id Server Id
+ * @returns The full path to the server's directory.
+ */
 export function serverPath(id: string): string {
 	return path.join(config.serversDir, id);
 }
@@ -163,6 +154,7 @@ export function validateConfig(): void {
 		{ dir: config.serversDir, envVar: "KITH_SERVERS_DIR" },
 		{ dir: config.logDir, envVar: "KITH_LOG_DIR" },
 		{ dir: config.tmpFileDir, envVar: "KITH_TMP_FILE_DIR" },
+		{ dir: config.cacheDir, envVar: "KITH_CACHE_DIR" },
 	];
 
 	// A local backup destination needs to exist for the sidecar's bind
