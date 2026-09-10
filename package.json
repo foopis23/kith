@@ -1,8 +1,8 @@
 {
 	"name": "@foopis23/kith",
 	"version": "0.2.2",
-	"description": "Terminal UI for running persistent Dockerized Minecraft servers",
-	"license": "UNLICENSED",
+	"description": "Terminal UI for running persistent Containerized Minecraft servers",
+	"license": "MIT",
 	"type": "module",
 	"main": "dist/index.js",
 	"bin": {
