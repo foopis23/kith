@@ -1,6 +1,6 @@
 {
   "name": "@foopis23/kith",
-  "version": "0.2.2",
+  "version": "0.3.0",
   "description": "Terminal UI for running persistent Containerized Minecraft servers",
   "license": "MIT",
   "type": "module",
