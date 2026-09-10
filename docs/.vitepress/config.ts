@@ -41,6 +41,7 @@ export default defineConfig({
         text: 'Guide',
         items: [
           { text: 'Usage', link: '/usage' },
+          { text: 'Backups', link: '/backups' },
           { text: 'Patching Mod Configs', link: '/patching' },
           { text: 'Known Limitations', link: '/limitations' }
         ]
@@ -48,8 +49,7 @@ export default defineConfig({
       {
         text: 'Reference',
         items: [
-          { text: 'Configuration', link: '/configuration' },
-          { text: 'Backups', link: '/backups' }
+          { text: 'Configuration', link: '/configuration' }
         ]
       }
     ],

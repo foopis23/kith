@@ -32,6 +32,32 @@ export KITH_BACKUP_PASSWORD='a-long-random-password'
 - `KITH_BASE_BACKUP_DEST` sets where repositories live. Each server gets its own repository at `<dest>/<server id>`. A plain path is a local directory. A URL with a scheme prefix (`s3:`, `b2:`, `azure:`, `gs:`, `rclone:`) is a remote restic repository.
 - `KITH_BACKUP_PASSWORD` is the password every repository is encrypted with. Required when a destination is set, and kith refuses to start without it. Don't reuse this password anywhere else.
 
+## Local backups
+
+The most common setup backs up to a directory on the same machine. Recommended locations match your install model:
+
+- **Per-user install.** Anything under your home directory works, but the natural spot is alongside the other kith data:
+
+  ```bash
+  export KITH_BASE_BACKUP_DEST=~/.local/share/kith/backups
+  ```
+
+  If you've set `XDG_DATA_HOME`, use `$XDG_DATA_HOME/kith/backups` instead to keep everything in one place.
+
+- **Global install.** `/var/backups/kith`, following the [Filesystem Hierarchy Standard](https://refspecs.linuxfoundation.org/FHS_3.0/fhs_3.0.pdf) (the same `var/backups` convention, on non-program-specific data). This matches the recommended layout in [Installation](installation.md#global-install):
+
+  ```bash
+  export KITH_BASE_BACKUP_DEST=/var/backups/kith
+  ```
+
+Whichever you pick, create the directory with the right ownership before first run. For per-user that's `mkdir -p ~/.local/share/kith/backups`. For global, add it to the `install -d` commands in [Installation](installation.md#global-install):
+
+```bash
+sudo install -d -o root -g kith -m 2770 /var/backups/kith
+```
+
+Local backups protect you against accidents and bad updates, not disk failure. If the machine's storage is the thing you're worried about, use a [remote backend](#remote-backends) as well, or instead.
+
 ## Schedule and retention
 
 Backups run on the configured schedule only. Starting a server does not trigger a backup, so frequently started and stopped servers don't pile up snapshots. The first backup lands one interval after the server starts.
