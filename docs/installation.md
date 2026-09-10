@@ -14,14 +14,13 @@ Kith is configured entirely through environment variables, and how you install d
 
 ## Installing the package
 
-Kith is published to GitHub Packages as a private package. Point npm at the GitHub registry for the package scope (in `~/.npmrc`):
+Kith is published to GitHub Packages. Point npm at the GitHub registry for the package scope (in `~/.npmrc`):
 
 ```
 @foopis23:registry=https://npm.pkg.github.com
-//npm.pkg.github.com/:_authToken=YOUR_GITHUB_TOKEN
 ```
 
-The token needs the `read:packages` scope. Then:
+Then:
 
 ```bash
 bun install -g @foopis23/kith

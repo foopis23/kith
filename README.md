@@ -45,16 +45,3 @@ bun run lint        # biome lint (with autofix)
 bun run format      # biome format
 bunx tsc --noEmit   # typecheck
 ```
-
-### Publishing
-
-`npm publish` compiles the TypeScript to `dist/` (`tsc`, via `prepublishOnly`)
-and pushes it to GitHub Packages. Publishing needs a token with
-`write:packages` in `~/.npmrc` (same `//npm.pkg.github.com/:_authToken` line
-as above), and the repo's remote must point at the matching GitHub
-repository. The package scope has to match the repo owner. Bump `version`
-in `package.json` first.
-
-```bash
-npm publish
-```
