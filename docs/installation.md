@@ -14,20 +14,20 @@ Kith is configured entirely through environment variables, and how you install d
 
 ## Installing the package
 
-Kith is published to GitHub Packages. Point npm at the GitHub registry for the package scope (in `~/.npmrc`):
+Kith is published to GitHub Packages. The simplest install passes the registry inline:
+
+```bash
+bun install -g @foopis23/kith --registry https://npm.pkg.github.com
+kith
+```
+
+If you'd rather not repeat the flag, make the scope registry permanent in `~/.npmrc` and the plain `bun install -g @foopis23/kith` works from then on:
 
 ```
 @foopis23:registry=https://npm.pkg.github.com
 ```
 
-Then:
-
-```bash
-bun install -g @foopis23/kith
-kith
-```
-
-Upgrading is `bun install -g @foopis23/kith` again.
+Upgrading is the same install command again.
 
 ## Per-user install
 

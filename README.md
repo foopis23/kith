@@ -23,7 +23,7 @@ The itzg/minecraft-server image already does almost everything a Minecraft serve
 Requirements are [Bun](https://bun.com) 1.4+ and [Docker](https://www.docker.com/) with the Compose plugin.
 
 ```bash
-bun install -g @foopis23/kith
+bun install -g @foopis23/kith --registry https://npm.pkg.github.com
 kith
 ```
 
