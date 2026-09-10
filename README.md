@@ -1,5 +1,8 @@
 # Kith
 
+> [!WARNING]
+> **Pre-release software.** Kith is under active development. Configuration formats, behavior, and on-disk layouts can change between releases, and following the docs without care can break your servers. Back up anything you can't afford to lose before upgrading or changing global settings.
+
 A terminal UI for running Minecraft servers that are meant to _stay_ running. Kith handles the upkeep: installing and updating modpacks, matching Java versions, keeping backups, re-applying your config tweaks after every pack update. It's built on the [itzg/minecraft-server](https://docker-minecraft-server.readthedocs.io/) image and wraps each server in a plain Docker Compose project.
 
 Kith stays out of your way. Each server is a `docker-compose.yml` and a data directory, nothing more. No daemon, no database. Edit `server.properties` by hand, drop plugins or mods into the data directory, tweak the compose file. It's your server; kith just streamlines the boring parts. Anything kith doesn't manage, it leaves alone.

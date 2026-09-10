@@ -28,3 +28,7 @@ features:
   - title: Plain Docker Compose
     details: Each server is a plain docker-compose.yml and a data directory. Kith preserves anything it doesn't manage, so the escape hatch is always open.
 ---
+
+::: warning Pre-release
+Kith is under active development. Configuration formats, behavior, and on-disk layouts can change between releases, and mistakes can break your servers. Back up anything you can't afford to lose before upgrading or changing global settings.
+:::
