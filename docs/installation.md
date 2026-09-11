@@ -14,20 +14,23 @@ Kith is configured entirely through environment variables, and how you install d
 
 ## Installing the package
 
-Kith is published to GitHub Packages. The simplest install passes the registry inline:
+Kith is published to GitHub Packages. Bun's `--registry` flag and `.npmrc` scope mapping are unreliable for global installs, so point the scope at GitHub in Bun's own config file instead. Add this to `~/.bunfig.toml`, creating the file if it doesn't exist:
+
+```toml
+[install.scopes]
+"@foopis23" = "https://npm.pkg.github.com"
+```
+
+Then install globally and run:
 
 ```bash
-bun install -g @foopis23/kith --registry https://npm.pkg.github.com
+bun install -g @foopis23/kith
 kith
 ```
 
-If you'd rather not repeat the flag, make the scope registry permanent in `~/.npmrc` and the plain `bun install -g @foopis23/kith` works from then on:
-
-```
-@foopis23:registry=https://npm.pkg.github.com
-```
-
 Upgrading is the same install command again.
+
+"Global" here means global to your user account. Bun puts the package in `~/.bun/install/global` and links the `kith` command into `~/.bun/bin`, which Bun's own installer adds to your `PATH`. A system-wide install is possible by pointing those locations elsewhere with `install.globalDir` and `install.globalBinDir` in `bunfig.toml` or the `BUN_INSTALL_GLOBAL_DIR` and `BUN_INSTALL_BIN` environment variables, but that's out of scope for this document. The per-user and global install models below are about where kith's _data_ lives, not where the binary lives. On a shared machine every admin runs this same install for their own account, and upgrades are per-account too.
 
 ## Per-user install
 
@@ -104,7 +107,7 @@ fi
 
 Non-members can't read `/etc/kith/env` (mode `0640`, group `kith`), so the paths and any credentials stay invisible to other users on the machine.
 
-Members log in again and run `kith`. The setgid directories keep new files in the `kith` group no matter who or which container creates them, and the group-read/write modes let any member manage any server. Each member's files are owned by their own uid (`KITH_UID` defaults to whoever is running), so world files show `alice:kith`, `bob:kith`, and so on.
+Each member installs kith for their own account, as described in [Installing the package](#installing-the-package), then logs in again and runs `kith`. The setgid directories keep new files in the `kith` group no matter who or which container creates them, and the group-read/write modes let any member manage any server. Each member's files are owned by their own uid (`KITH_UID` defaults to whoever is running), so world files show `alice:kith`, `bob:kith`, and so on.
 
 One caveat: **only one kith instance can manage a servers directory at a time.** Kith takes a lock (`$KITH_SERVERS_DIR/.kith.lock`) at startup and refuses to start if another instance holds it, so two admins can't race each other on compose rewrites and port allocation. If kith crashes without releasing the lock, the next start detects the stale lock and reclaims it.
 
