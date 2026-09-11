@@ -27,7 +27,9 @@ One thing to know before changing a global setting: the **password** is baked in
 Two variables turn backups on:
 
 ```bash
-export KITH_BASE_BACKUP_DEST=/var/backups/kith   # or a restic URL, see below
+# A local path matching your install model (see Local backups below):
+export KITH_BASE_BACKUP_DEST=~/.local/share/kith/backups   # per-user install
+# export KITH_BASE_BACKUP_DEST=/var/backups/kith           # global install
 export KITH_BACKUP_PASSWORD='a-long-random-password'
 ```
 

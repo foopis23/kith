@@ -88,15 +88,12 @@ Put the configuration in `/etc/kith/env`:
 # /etc/kith/env: kith configuration, sourced for kith group members only.
 export KITH_SERVERS_DIR=/var/lib/kith/servers
 export KITH_LOG_DIR=/var/log/kith
-export KITH_BASE_BACKUP_DEST=/var/backups/kith
 export KITH_CACHE_DIR=/var/cache/kith
 export KITH_GID=$(getent group kith | cut -d: -f3)
-# Secret-bearing files (compose files hold backup credentials) must be
-# group-readable so every member can manage every server.
 export KITH_SECRET_FILE_MODE=660
 ```
 
-Then add the sourcing logic to `/etc/profile` (or drop a file in `/etc/profile.d/`):
+Then add the sourcing logic to `/etc/profile` (or drop a file in `/etc/profile.d/`, for example `/etc/profile.d/kith.sh`):
 
 ```bash
 # Only members of the kith group get kith's configuration.
