@@ -78,6 +78,7 @@ Then configure kith's environment. The variables live in their own file, locked 
 
 ```bash
 # 3. Create the environment file, readable only by root and the kith group.
+sudo install -d -o root -g kith -m 0750 /etc/kith
 sudo install -m 0640 -o root -g kith /dev/null /etc/kith/env
 ```
 

@@ -1,11 +1,42 @@
 # Usage
 
-Everything happens inside the TUI:
+Everything happens inside the TUI.
 
-- **Server list.** Live status and player counts for every server. Create, start, and stop servers from here.
-- **Server details.** Stream logs, run console commands, edit memory, port, version, and modpack settings.
-- **Backups.** Take snapshots on demand, browse snapshot history, restore to any snapshot. See [Backups](backups.md).
-- **Configure.** Per-server settings. Kith rewrites the server's `docker-compose.yml` on changes, preserving anything it doesn't manage.
+## Server list
+
+The home screen shows live status and player counts for every server. From here you pick a server to work with, or create a new one.
+
+![Kith's server list showing offline, starting, and online servers](./screenshots/kith-home-screen.png)
+
+### Creating a server
+
+The server wizard walks you through creating a server. Paste a modpack link and kith validates it, lists every published version with its loader and release channel, and installs it. Vanilla servers work too.
+
+![Creating a server from a Modrinth modpack in the server wizard](./screenshots/kith-create-modrinth.png)
+
+## Server details
+
+Select a server to manage it: start and stop it, stream logs, run console commands, and edit memory, port, version, and modpack settings.
+
+![The server detail view](./screenshots/kith-server-details.png)
+
+### Console
+
+Watch logs stream by and run console commands without leaving the app.
+
+![Streaming logs and running commands from the server console](./screenshots/kith-server-console.png)
+
+### Configure
+
+Edit memory, port, version, and modpack settings per server. Kith rewrites the server's `docker-compose.yml` on changes, preserving anything it doesn't manage.
+
+![Editing a server's memory, port, version, and modpack settings](./screenshots/kith-server-config.png)
+
+## Backups
+
+Take snapshots on demand, browse snapshot history, restore to any snapshot. See [Backups](backups.md).
+
+![A server's backup screen with snapshot history](./screenshots/kith-backups.png)
 
 ## How it works
 

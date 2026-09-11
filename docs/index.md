@@ -4,7 +4,10 @@ layout: home
 
 hero:
   name: "Kith"
-  # text: "Minecraft servers on Docker, without the busywork"
+  # Required so the hero renders its image container, but the actual <img>
+  # comes from the home-hero-image slot (docs/.vitepress/theme/), which
+  # bundles the screenshot so the URL resolves in the production build.
+  image: ./screenshots/kith-home-screen.png
   tagline: A terminal UI for running Minecraft servers on the itzg/minecraft-server image. Modpacks, Java, backups, and config patches handled.
   actions:
     - theme: brand

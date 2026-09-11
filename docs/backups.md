@@ -4,6 +4,8 @@ Kith backs servers up with [restic](https://restic.net/), running in a sidecar c
 
 Backups are opt-in globally. Nothing is backed up until you set a destination.
 
+![A server's backup screen with snapshot history](./screenshots/kith-backups.png)
+
 ## How it works
 
 Backups are configured once, globally, and applied to every server. Set a destination and a schedule in kith's environment and you're done. You never set up backups for an individual server.

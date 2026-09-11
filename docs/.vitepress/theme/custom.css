@@ -1,0 +1,53 @@
+/*
+ * The default theme sizes hero images for small square logos: capped at
+ * 320px, absolutely centered, with a circular glow behind. Kith's hero is
+ * a terminal screenshot, so restyle the hero to give it real space while
+ * keeping the default two-column layout (text left, image right).
+ */
+
+.VPHero.has-image .image-bg {
+  /* Circular blur backdrop meant for logos. */
+  display: none;
+}
+
+.VPHero.has-image {
+  /* Default pads the top with nav height + 80px, which leaves a lot of
+     dead space above the hero. Keep the nav offset, trim the extra. */
+  padding-top: calc(var(--vp-nav-height) + var(--vp-layout-top-height, 0px) + 32px);
+}
+
+.VPHero.has-image .image-container {
+  /* Default is a fixed 320px square. */
+  width: 100%;
+  height: auto;
+  transform: none;
+}
+
+.hero-screenshot {
+  display: block;
+  width: 100%;
+  height: auto;
+}
+
+/* Mobile stacks text above the image. The default uses negative margins
+   to overlap a small logo with the text, which would clip the screenshot. */
+@media (max-width: 959px) {
+  .VPHero.has-image .image {
+    order: 2;
+    width: 100%;
+    margin: 32px 0 0;
+  }
+}
+
+/* Desktop: shrink the text column (default max-width 592px) so the
+   screenshot gets the extra room, and center it vertically against the
+   image. */
+@media (min-width: 960px) {
+  .VPHero.has-image .container {
+    align-items: center;
+  }
+
+  .VPHero.has-image .main {
+    max-width: 420px;
+  }
+}

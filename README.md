@@ -5,6 +5,8 @@
 
 A terminal UI for managing Minecraft servers on the [itzg/minecraft-server](https://docker-minecraft-server.readthedocs.io/) image. It handles the upkeep: modpack installs and updates, Java version matching, backups, and config patches. That said, every server stays a plain `docker-compose.yml` and a data directory you can edit by hand.
 
+![Kith's server list showing offline, starting, and online servers](docs/screenshots/kith-home-screen.png)
+
 ## Why?
 
 The itzg/minecraft-server image already does almost everything a Minecraft server needs. But you only create a new server every few months, so each one means a trip back to the image's docs to re-learn how the compose file goes together and which environment variables do what. Server panels solve the remembering, but replace your files with their own abstractions. Kith is a thin layer on top of the Docker image that knows the knobs so you don't have to, while every server stays an ordinary compose project you can edit by hand when you need to.
