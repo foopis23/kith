@@ -12,34 +12,30 @@ Kith is configured entirely through environment variables, and how you install d
 - **Per-user install (default).** Kith follows the [XDG Base Directory Specification](https://specifications.freedesktop.org/basedir/latest/). Everything lives under the invoking user's home directory, with nothing to configure.
 - **Global install.** One shared kith for the whole machine, managed by a Unix group. You point the directories at system locations (`/var/lib`, `/var/log`, and so on) and set `KITH_GID` to the managing group.
 
-## Installing the package
+## Per-user install
 
-Kith is published to GitHub Packages. Bun's `--registry` flag and `.npmrc` scope mapping are unreliable for global installs, so point the scope at GitHub in Bun's own config file instead. Add this to `~/.bunfig.toml`, creating the file if it doesn't exist:
+This is the default model and needs no directory setup. Kith resolves its directories from the XDG environment variables, falling back to the spec's defaults under your home directory:
+
+- Servers and world data: `$XDG_DATA_HOME/kith/servers`, default `~/.local/share/kith/servers`
+- Logs: `$XDG_STATE_HOME/kith/logs`, default `~/.local/state/kith/logs`
+- Cache: `$XDG_CACHE_HOME/kith`, default `~/.cache/kith`
+- Scratch files: `$TMPDIR/kith`, wiped on reboot
+
+To install the package, point Bun at GitHub Packages first. Bun's `--registry` flag and `.npmrc` scope mapping are unreliable for global installs, so use Bun's config file instead. Add this to `~/.bunfig.toml`, creating the file if it doesn't exist:
 
 ```toml
 [install.scopes]
 "@foopis23" = "https://npm.pkg.github.com"
 ```
 
-Then install globally and run:
+Then install and run:
 
 ```bash
 bun install -g @foopis23/kith
 kith
 ```
 
-Upgrading is the same install command again.
-
-"Global" here means global to your user account. Bun puts the package in `~/.bun/install/global` and links the `kith` command into `~/.bun/bin`, which Bun's own installer adds to your `PATH`. A system-wide install is possible by pointing those locations elsewhere with `install.globalDir` and `install.globalBinDir` in `bunfig.toml` or the `BUN_INSTALL_GLOBAL_DIR` and `BUN_INSTALL_BIN` environment variables, but that's out of scope for this document. The per-user and global install models below are about where kith's _data_ lives, not where the binary lives. On a shared machine every admin runs this same install for their own account, and upgrades are per-account too.
-
-## Per-user install
-
-This is the default and needs no setup. Kith resolves its directories from the XDG environment variables, falling back to the spec's defaults under your home directory:
-
-- Servers and world data: `$XDG_DATA_HOME/kith/servers`, default `~/.local/share/kith/servers`
-- Logs: `$XDG_STATE_HOME/kith/logs`, default `~/.local/state/kith/logs`
-- Cache: `$XDG_CACHE_HOME/kith`, default `~/.cache/kith`
-- Scratch files: `$TMPDIR/kith`, wiped on reboot
+Upgrading is the same command again. "Global" here means global to your account: the package lands in `~/.bun/install/global` and the `kith` command is linked into `~/.bun/bin`, which Bun's installer puts on your `PATH`.
 
 Files are owned by you (`KITH_UID`/`KITH_GID` default to your ids), and files carrying secrets (compose files with backup credentials, password scratch files) default to mode `600`, readable by you alone. Nothing to configure.
 
@@ -70,9 +66,12 @@ sudo usermod -aG docker alice
 sudo usermod -aG docker bob
 
 # 2. Create the directories, owned by the group. The setgid bit (2770)
-#    makes anything created inside inherit the kith group.
+#    makes anything created inside inherit the kith group. The Bun
+#    directories get the same treatment, so any member can install or
+#    upgrade the shared binary.
 sudo install -d -o root -g kith -m 2770 \
   /var/lib/kith/servers /var/log/kith /var/backups/kith /var/cache/kith
+sudo install -d -o root -g kith -m 2770 /usr/local/lib/bun /usr/local/kith/bin
 ```
 
 Be aware that `docker` group membership is effectively root on the host, since a docker socket lets you mount anything into a privileged container. Only add people you already trust as admins.
@@ -94,6 +93,7 @@ export KITH_LOG_DIR=/var/log/kith
 export KITH_CACHE_DIR=/var/cache/kith
 export KITH_GID=$(getent group kith | cut -d: -f3)
 export KITH_SECRET_FILE_MODE=660
+export PATH="/usr/local/kith/bin:$PATH"
 ```
 
 Then add the sourcing logic to `/etc/profile` (or drop a file in `/etc/profile.d/`, for example `/etc/profile.d/kith.sh`):
@@ -107,7 +107,24 @@ fi
 
 Non-members can't read `/etc/kith/env` (mode `0640`, group `kith`), so the paths and any credentials stay invisible to other users on the machine.
 
-Each member installs kith for their own account, as described in [Installing the package](#installing-the-package), then logs in again and runs `kith`. The setgid directories keep new files in the `kith` group no matter who or which container creates them, and the group-read/write modes let any member manage any server. Each member's files are owned by their own uid (`KITH_UID` defaults to whoever is running), so world files show `alice:kith`, `bob:kith`, and so on.
+Each member then points Bun at the shared locations in their own `~/.bunfig.toml`. Bun reads the global config from the invoking user's home directory (or `$XDG_CONFIG_HOME`), so every member needs the same file:
+
+```toml
+[install]
+globalDir = "/usr/local/lib/bun"
+globalBinDir = "/usr/local/kith/bin"
+
+[install.scopes]
+"@foopis23" = "https://npm.pkg.github.com"
+```
+
+After that, any member can install or upgrade the shared binary:
+
+```bash
+bun install -g @foopis23/kith
+```
+
+Members then log in again and run `kith`. The setgid directories keep new files in the `kith` group no matter who or which container creates them, and the group-read/write modes let any member manage any server. Each member's files are owned by their own uid (`KITH_UID` defaults to whoever is running), so world files show `alice:kith`, `bob:kith`, and so on.
 
 One caveat: **only one kith instance can manage a servers directory at a time.** Kith takes a lock (`$KITH_SERVERS_DIR/.kith.lock`) at startup and refuses to start if another instance holds it, so two admins can't race each other on compose rewrites and port allocation. If kith crashes without releasing the lock, the next start detects the stale lock and reclaims it.
 

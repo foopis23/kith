@@ -1,28 +1,26 @@
 # Usage
 
-Everything happens inside the TUI.
-
 ## Server list
 
 The home screen shows live status and player counts for every server. From here you pick a server to work with, or create a new one.
 
 ![Kith's server list showing offline, starting, and online servers](./screenshots/kith-home-screen.png)
 
-### Creating a server
+## Creating a server
 
-The server wizard walks you through creating a server. Paste a modpack link and kith validates it, lists every published version with its loader and release channel, and installs it. Vanilla servers work too.
+The server wizard walks you through creating a server. Based on the server type you choose, it will prompt for the necessary information, such as a modpack link and version for modded servers or minecraft version for vanilla servers.
 
 ![Creating a server from a Modrinth modpack in the server wizard](./screenshots/kith-create-modrinth.png)
 
 ## Server details
 
-Select a server to manage it: start and stop it, stream logs, run console commands, and edit memory, port, version, and modpack settings.
+Select a server to manage it: start and stop it, see live logs, run console commands, and edit memory allocation, port, version, and modpack settings.
 
 ![The server detail view](./screenshots/kith-server-details.png)
 
 ### Console
 
-Watch logs stream by and run console commands without leaving the app.
+Watch live logs and run console commands without leaving the app.
 
 ![Streaming logs and running commands from the server console](./screenshots/kith-server-console.png)
 

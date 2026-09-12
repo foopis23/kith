@@ -1,7 +1,7 @@
 # Kith
 
 > [!WARNING]
-> **Pre-release software.** Kith is under active development. Configuration formats, behavior, and on-disk layouts can change between releases, and following the docs without care can break your servers. Back up anything you can't afford to lose before upgrading or changing global settings.
+> **Pre-release software.** Kith is under active development. Configuration formats, behavior, and on-disk layouts can change between releases, and a future update could lose your data or leave your servers unusable with kith. Back up anything you can't afford to lose before upgrading or changing global settings.
 
 A terminal UI for managing Minecraft servers on the [itzg/minecraft-server](https://docker-minecraft-server.readthedocs.io/) image. It handles the upkeep: modpack installs and updates, Java version matching, backups, and config patches. That said, every server stays a plain `docker-compose.yml` and a data directory you can edit by hand.
 
