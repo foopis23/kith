@@ -7,6 +7,7 @@
 		"moduleResolution": "NodeNext",
 		"moduleDetection": "force",
 		"jsx": "react-jsx",
+		"resolveJsonModule": true,
 		"allowJs": true,
 		"types": ["bun"],
 		// Emit: plain compiled JS mirroring src/ — runs under Bun

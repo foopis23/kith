@@ -1,8 +1,8 @@
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { fileURLToPath } from "node:url";
 import z from "zod";
+import pkg from "../../package.json" with { type: "json" };
 
 /**
  * Based on XDG Base Directory Specification.
@@ -215,14 +215,11 @@ export function validateConfig(): void {
 	}
 }
 
+/**
+ * The version is embedded at build time via the static package.json import
+ * above, so this works inside a `bun build --compile` single executable
+ * where there is no package.json on disk to read.
+ */
 export function loadVersionNumber(): string {
-	const __filename = fileURLToPath(import.meta.url);
-	const __dirname = path.dirname(__filename);
-	const packageJson = path.resolve(__dirname, "../../package.json");
-	const packageData = z
-		.object({
-			version: z.string(),
-		})
-		.parse(JSON.parse(fs.readFileSync(packageJson, "utf-8")));
-	return packageData.version;
+	return pkg.version;
 }
