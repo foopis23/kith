@@ -110,12 +110,16 @@ while [ "$install_dir" != "/" ] && [ "${install_dir%/}" != "$install_dir" ]; do
 	install_dir=${install_dir%/}
 done
 
+# -r/-w on /dev/tty only check permission bits (it's world-readable); actually
+# opening it is what fails (ENXIO) when there is no controlling terminal.
+have_tty() { (/bin/true < /dev/tty) 2>/dev/null; }
+
 # Run a command as root, with actionable errors when we can't prompt for a
 # password (no tty) or sudo isn't available at all.
 as_root() {
 	command -v sudo >/dev/null 2>&1 ||
 		fail "installing to $install_dir requires root and sudo is not installed; re-run as root or set KITH_INSTALL_DIR to a writable directory"
-	[ -r /dev/tty ] && [ -w /dev/tty ] ||
+	have_tty ||
 		fail "installing to $install_dir requires root but there is no terminal to prompt for a password; re-run with sudo or set KITH_INSTALL_DIR to a writable directory"
 	# Redirect from /dev/tty so sudo can prompt for a password even when
 	# this script is piped into sh from curl.
