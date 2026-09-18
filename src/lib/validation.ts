@@ -6,13 +6,10 @@ import z from "zod";
  * apply; surrounding whitespace is trimmed off non-empty values too.
  */
 export const emptyToUndefined = <T extends z.ZodType>(schema: T) =>
-	z.preprocess(
-		(val) => {
-			if (typeof val !== "string") {
-				return val;
-			}
-			const trimmed = val.trim();
-			return trimmed === "" ? undefined : trimmed;
-		},
-		schema,
-	);
+	z.preprocess((val) => {
+		if (typeof val !== "string") {
+			return val;
+		}
+		const trimmed = val.trim();
+		return trimmed === "" ? undefined : trimmed;
+	}, schema);
