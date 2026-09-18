@@ -485,6 +485,7 @@ async function applyServerConfigUpdate(
 	serverId: string,
 	patch: ServerConfigPatch,
 ): Promise<ServerConfig> {
+	logger.info({ serverId, ...patch }, "Applying server config update");
 	try {
 		const composeConfig = await loadComposeConfig(serverId);
 		const current = composeConfig.services.mc;

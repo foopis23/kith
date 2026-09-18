@@ -131,14 +131,16 @@ export const MAX_SERVER_LABEL_LENGTH = 48;
  */
 export const memorySchema = z
 	.string()
-	.regex(/^\d+[GgMm]$/, 'Memory must be a number followed by "G" or "M"')
-	.default("2G");
+	.regex(/^\d+[GgMm]$/, 'Memory must be a number followed by "G" or "M"');
 
 export const createServerSchema = z.object({
 	label: z.string().min(1).max(MAX_SERVER_LABEL_LENGTH),
 	version: z.string().default("LATEST"),
 	server_port: z.number().optional(), // if no port is specified, the service will find an available port automatically
-	memory: memorySchema,
+	// The default lives here rather than on memorySchema: in Zod 4 a
+	// .default() fires even under .optional(), so a defaulted memorySchema
+	// would inject "2G" into every config patch that doesn't touch memory.
+	memory: memorySchema.default("2G"),
 });
 
 export const createVanillaServerSchema = createServerSchema.extend({
