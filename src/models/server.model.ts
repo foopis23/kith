@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { SERVER_LABEL } from "../lib/const.js";
+import { emptyToUndefined } from "../lib/validation.js";
 import { backupDriftSchema, backupStateSchema } from "./backup.model.js";
 import { composeConfigSchema, composeServiceSchema } from "./compose.model.js";
 
@@ -134,7 +135,9 @@ export const memorySchema = z
 	.regex(/^\d+[GgMm]$/, 'Memory must be a number followed by "G" or "M"');
 
 export const createServerSchema = z.object({
-	label: z.string().min(1).max(MAX_SERVER_LABEL_LENGTH),
+	label: emptyToUndefined(
+		z.string().min(1).max(MAX_SERVER_LABEL_LENGTH).default("My Server"),
+	),
 	version: z.string().default("LATEST"),
 	server_port: z.number().optional(), // if no port is specified, the service will find an available port automatically
 	// The default lives here rather than on memorySchema: in Zod 4 a
