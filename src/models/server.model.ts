@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { GAME_PORT_LABEL, SERVER_LABEL } from "../lib/const.js";
+import { SERVER_LABEL } from "../lib/const.js";
 import { backupDriftSchema, backupStateSchema } from "./backup.model.js";
 import { composeConfigSchema, composeServiceSchema } from "./compose.model.js";
 
@@ -104,7 +104,6 @@ export const managedComposeConfigSchema = composeConfigSchema.extend({
 				labels: z
 					.object({
 						[SERVER_LABEL]: z.string(),
-						[GAME_PORT_LABEL]: z.string().optional(),
 					})
 					.catchall(z.string()),
 			}),
@@ -228,9 +227,10 @@ export type ServerConfig = {
 	 */
 	flags: ServerFlags;
 	/**
-	 * The host port publishing the server's game port (container 25565).
-	 * Derived from the service's `ports`, which may publish additional
-	 * ports (voice chat, web maps) — those are left untouched on update.
+	 * The host port publishing the server's game port. The game port's
+	 * host and container ports always match (SERVER_PORT); the service's
+	 * `ports` may publish additional ports (voice chat, web maps) — those
+	 * are left untouched on update.
 	 */
 	port: number | undefined;
 	/** The tag of the itzg/minecraft-server image, i.e. the Java version. */

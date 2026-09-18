@@ -15,11 +15,11 @@ export const PATCH_FILE_CONTAINER_PATH = "/patches.json";
 export const SERVER_LABEL = "kith.server.label";
 
 /**
- * Compose label identifying which published port is the Minecraft game
- * port, so config updates never touch other mappings (voice chat, web
- * maps). The value is the container port, ie. "25565".
+ * itzg/minecraft-server env var naming the container port the game
+ * listens on. Kith publishes the same port on the host, so a game-port
+ * mapping always has matching host and container ports.
  */
-export const GAME_PORT_LABEL = "kith.server.game-port";
+export const GAME_PORT_ENV = "SERVER_PORT";
 
 /**
  * Compose label recording the per-server backup choice: "false" is an

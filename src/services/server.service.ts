@@ -9,7 +9,7 @@ import {
 	BACKUP_SERVICE_NAME,
 	BACKUPS_ENABLED_LABEL,
 	DATA_DIR_NAME,
-	GAME_PORT_LABEL,
+	GAME_PORT_ENV,
 	MC_SERVICE_NAME,
 	PATCH_FILE_CONTAINER_PATH,
 	PATCH_FILE_NAME,
@@ -264,15 +264,15 @@ export async function createVanillaServer(
 					image: `itzg/minecraft-server:${javaTag}`,
 					labels: {
 						[SERVER_LABEL]: label || id,
-						[GAME_PORT_LABEL]: `${server_port}`,
 						...(backupService ? { [BACKUPS_ENABLED_LABEL]: "true" } : {}),
 					},
-					ports: [`${server_port}:25565`],
+					ports: [`${server_port}:${server_port}`],
 					environment: {
 						...BASE_COMPOSE_CONFIG.services.mc.environment,
 						TYPE: `${type}`,
 						VERSION: `${version}`,
 						MEMORY: memory,
+						[GAME_PORT_ENV]: `${server_port}`,
 					},
 				},
 				...(backupService ? { [BACKUP_SERVICE_NAME]: backupService } : {}),
@@ -349,10 +349,9 @@ export async function createModrinthServer(
 					image: `itzg/minecraft-server:${javaTag}`,
 					labels: {
 						[SERVER_LABEL]: label || id,
-						[GAME_PORT_LABEL]: `${server_port}`,
 						...(backupService ? { [BACKUPS_ENABLED_LABEL]: "true" } : {}),
 					},
-					ports: [`${server_port}:25565`],
+					ports: [`${server_port}:${server_port}`],
 					environment: {
 						...BASE_COMPOSE_CONFIG.services.mc.environment,
 						TYPE: `${type}`,
@@ -364,6 +363,7 @@ export async function createModrinthServer(
 						VERSION:
 							modrinth_modpack_version === "latest" ? "latest" : undefined,
 						MEMORY: memory,
+						[GAME_PORT_ENV]: `${server_port}`,
 					},
 				},
 				...(backupService ? { [BACKUP_SERVICE_NAME]: backupService } : {}),
@@ -1052,12 +1052,12 @@ function findHostPort(
 }
 
 /**
- * The container port the Minecraft server listens on, identified by the
- * game-port label the compose file is created with. Defaults to 25565
- * for files predating the label.
+ * The container port the Minecraft server listens on, read from the
+ * SERVER_PORT env var the compose file is created with. Defaults to
+ * 25565, itzg's default, when the variable isn't set.
  */
 function gameContainerPort(service: ComposeServiceConfig): number {
-	const raw = service.labels?.[GAME_PORT_LABEL];
+	const raw = service.environment?.[GAME_PORT_ENV];
 	if (!raw) {
 		return 25565;
 	}
@@ -1209,16 +1209,21 @@ function applyServerConfigPatch<T extends ComposeServiceConfig>(
 	let ports = service.ports;
 	if ("port" in patch) {
 		// Replace the mapping for the game port, keeping every other
-		// published port (voice chat, web maps) as-is.
+		// published port (voice chat, web maps) as-is. The game port's host
+		// and container ports always match (SERVER_PORT), so a port change
+		// rewrites both sides of the mapping.
 		const containerPort = gameContainerPort(service);
 		const others = (service.ports ?? []).filter(
 			(port) => containerPortOf(port) !== containerPort,
 		);
 
-		ports =
-			patch.port === undefined
-				? others
-				: [`${patch.port}:${containerPort}`, ...others];
+		if (patch.port === undefined) {
+			ports = others;
+			set(GAME_PORT_ENV, undefined);
+		} else {
+			ports = [`${patch.port}:${patch.port}`, ...others];
+			set(GAME_PORT_ENV, String(patch.port));
+		}
 	}
 
 	let image = service.image;
