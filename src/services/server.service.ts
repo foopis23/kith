@@ -68,6 +68,37 @@ import { parseModrinthModpack } from "./modrinth.service.js";
 
 const logger = globalLogger.child({ service: "server.service.ts" });
 
+const BASE_COMPOSE_CONFIG = {
+	services: {
+		mc: {
+			pull_policy: "daily",
+			tty: true,
+			stdin_open: true,
+			stop_grace_period: "1m",
+			restart: "unless-stopped",
+			logging: {
+				driver: "json-file",
+				options: {
+					"max-size": "10m",
+					"max-file": "5",
+				}
+			},
+			environment: {
+				EULA: "TRUE",
+				USE_AIKAR_FLAGS: "TRUE",
+				PATCH_DEFINITIONS: PATCH_FILE_CONTAINER_PATH,
+				...(config.uid >= 0 && config.gid >= 0
+					? { UID: `${config.uid}`, GID: `${config.gid}` }
+					: {}),
+			},
+			volumes: [
+				`./${DATA_DIR_NAME}:/data`,
+				`./${PATCH_FILE_NAME}:${PATCH_FILE_CONTAINER_PATH}:ro`,
+			],
+		},
+	},
+} as const
+
 //#region Public API
 
 /**
@@ -225,39 +256,24 @@ export async function createVanillaServer(
 			: undefined;
 
 		const composeConfig = {
+			...BASE_COMPOSE_CONFIG,
 			services: {
+				...BASE_COMPOSE_CONFIG.services,
 				mc: {
+					...BASE_COMPOSE_CONFIG.services.mc,
 					image: `itzg/minecraft-server:${javaTag}`,
-					pull_policy: "daily",
-					tty: true,
-					stdin_open: true,
 					labels: {
 						[SERVER_LABEL]: label || id,
-						[GAME_PORT_LABEL]: "25565",
+						[GAME_PORT_LABEL]: `${server_port}`,
 						...(backupService ? { [BACKUPS_ENABLED_LABEL]: "true" } : {}),
 					},
 					ports: [`${server_port}:25565`],
 					environment: {
-						EULA: "TRUE",
+						...BASE_COMPOSE_CONFIG.services.mc.environment,
 						TYPE: `${type}`,
 						VERSION: `${version}`,
 						MEMORY: memory,
-						USE_AIKAR_FLAGS: "TRUE",
-						PATCH_DEFINITIONS: PATCH_FILE_CONTAINER_PATH,
-						// Run the server as the configured host identity so files
-						// written into the bind-mounted data dir are owned
-						// uid:gid on the host (shared-group installs). The image's
-						// entrypoint re-maps its minecraft user to these and
-						// chowns /data to match. Skipped when no real id is
-						// configured (non-POSIX host) — the image default applies.
-						...(config.uid >= 0 && config.gid >= 0
-							? { UID: `${config.uid}`, GID: `${config.gid}` }
-							: {}),
 					},
-					volumes: [
-						`./${DATA_DIR_NAME}:/data`,
-						`./${PATCH_FILE_NAME}:${PATCH_FILE_CONTAINER_PATH}:ro`,
-					],
 				},
 				...(backupService ? { [BACKUP_SERVICE_NAME]: backupService } : {}),
 			},
@@ -325,20 +341,20 @@ export async function createModrinthServer(
 			: undefined;
 
 		const composeConfig = {
+			...BASE_COMPOSE_CONFIG,
 			services: {
+				...BASE_COMPOSE_CONFIG.services,
 				mc: {
+					...BASE_COMPOSE_CONFIG.services.mc,
 					image: `itzg/minecraft-server:${javaTag}`,
-					pull_policy: "daily",
-					tty: true,
-					stdin_open: true,
 					labels: {
 						[SERVER_LABEL]: label || id,
-						[GAME_PORT_LABEL]: "25565",
+						[GAME_PORT_LABEL]: `${server_port}`,
 						...(backupService ? { [BACKUPS_ENABLED_LABEL]: "true" } : {}),
 					},
 					ports: [`${server_port}:25565`],
 					environment: {
-						EULA: "TRUE",
+						...BASE_COMPOSE_CONFIG.services.mc.environment,
 						TYPE: `${type}`,
 						MODRINTH_MODPACK: identifier,
 						MODRINTH_MODPACK_VERSION:
@@ -348,17 +364,7 @@ export async function createModrinthServer(
 						VERSION:
 							modrinth_modpack_version === "latest" ? "latest" : undefined,
 						MEMORY: memory,
-						USE_AIKAR_FLAGS: "TRUE",
-						PATCH_DEFINITIONS: PATCH_FILE_CONTAINER_PATH,
-						// Same host-identity mapping as the vanilla path above.
-						...(config.uid >= 0 && config.gid >= 0
-							? { UID: `${config.uid}`, GID: `${config.gid}` }
-							: {}),
 					},
-					volumes: [
-						`./${DATA_DIR_NAME}:/data`,
-						`./${PATCH_FILE_NAME}:${PATCH_FILE_CONTAINER_PATH}:ro`,
-					],
 				},
 				...(backupService ? { [BACKUP_SERVICE_NAME]: backupService } : {}),
 			},
