@@ -1,0 +1,59 @@
+diff --git a/lib/GetFont.js b/lib/GetFont.js
+index 5bfff591e06fa1e4a8584b49c0eda1923d4d6d6d..c4e62de277d8fc5337312ccac839637ab4cb27e6 100644
+--- a/lib/GetFont.js
++++ b/lib/GetFont.js
+@@ -15,11 +15,30 @@
+ 
+ 'use strict';
+ 
+-const path = require('path');
+ const {
+   Debugging
+ } = require('./Debugging.js');
+ 
++// Statically require every font so bundlers (e.g. `bun build --compile`)
++// can see and embed them. A dynamic `require(path.normalize(...))` is
++// invisible to static analysis, leaving the font files out of bundled
++// single-file executables.
++const FONTS = {
++  '3d': require('../fonts/3d.json'),
++  'block': require('../fonts/block.json'),
++  'chrome': require('../fonts/chrome.json'),
++  'console': require('../fonts/console.json'),
++  'grid': require('../fonts/grid.json'),
++  'huge': require('../fonts/huge.json'),
++  'pallet': require('../fonts/pallet.json'),
++  'shade': require('../fonts/shade.json'),
++  'simple': require('../fonts/simple.json'),
++  'simple3d': require('../fonts/simple3d.json'),
++  'simpleBlock': require('../fonts/simpleBlock.json'),
++  'slick': require('../fonts/slick.json'),
++  'tiny': require('../fonts/tiny.json')
++};
++
+ /**
+  * Get a selected JSON font-file object
+  *
+@@ -30,16 +49,15 @@ const {
+ const GetFont = font => {
+   Debugging.report(`Running GetFont`, 1);
+ 
+-  // try loading the font file
+-  try {
+-    let FONTFACE = require(path.normalize(`../fonts/${font}.json`)); // read font file
++  const FONTFACE = FONTS[font];
+ 
+-    Debugging.report(`GetFont: Fontface path selected: "${font}.json"`, 2);
+-    return FONTFACE;
+-  } catch (error) {
+-    Debugging.error(`Font file for "${font}" errored out: ${error}`, 2);
++  if (!FONTFACE) {
++    Debugging.error(`Font file for "${font}" errored out: unknown font`, 2);
+     return false;
+   }
++
++  Debugging.report(`GetFont: Fontface path selected: "${font}.json"`, 2);
++  return FONTFACE;
+ };
+ module.exports = exports = {
+   GetFont

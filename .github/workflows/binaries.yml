@@ -1,0 +1,45 @@
+name: Release binaries
+
+on:
+  release:
+    types: [published]
+
+permissions:
+  contents: write
+
+jobs:
+  binaries:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: oven-sh/setup-bun@v2
+
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+
+      - name: Compile all targets
+        run: bun run compile:all
+
+      - name: Smoke-test the linux binary
+        run: |
+          output="$(timeout 5 ./dist/kith-linux-x64 2>&1 || true)"
+          echo "$output"
+          echo "$output" | grep -q "A simple TUI for managing your Minecraft servers."
+
+      # The other targets can't execute on an ubuntu runner, but we can at
+      # least verify each binary was compiled for the correct platform.
+      - name: Verify all target binaries
+        run: |
+          file dist/kith-linux-x64 | grep -q "ELF 64-bit.*x86-64"
+          file dist/kith-linux-arm64 | grep -qi "ELF 64-bit.*aarch64"
+          file dist/kith-darwin-x64 | grep -q "Mach-O 64-bit.*x86_64"
+          file dist/kith-darwin-arm64 | grep -q "Mach-O 64-bit.*arm64"
+
+      - name: Generate checksums
+        run: cd dist && sha256sum kith-* > checksums.txt
+
+      - name: Upload release assets
+        run: gh release upload "$GITHUB_REF_NAME" dist/kith-linux-x64 dist/kith-linux-arm64 dist/kith-darwin-x64 dist/kith-darwin-arm64 dist/checksums.txt --clobber
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
