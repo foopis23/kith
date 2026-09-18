@@ -81,7 +81,7 @@ const BASE_COMPOSE_CONFIG = {
 				options: {
 					"max-size": "10m",
 					"max-file": "5",
-				}
+				},
 			},
 			environment: {
 				EULA: "TRUE",
@@ -97,7 +97,7 @@ const BASE_COMPOSE_CONFIG = {
 			],
 		},
 	},
-} as const
+} as const;
 
 //#region Public API
 
@@ -214,12 +214,12 @@ export async function getServerStatus(serverId: string): Promise<ServerStatus> {
 	const hasContainer = await isContainerCreated(serverId);
 	const info = hasContainer
 		? await pingMCServer(serverId).catch((err) => {
-			logger.warn(
-				{ error: err },
-				`Failed to ping server "${serverId}" while retrieving server info`,
-			);
-			return null;
-		})
+				logger.warn(
+					{ error: err },
+					`Failed to ping server "${serverId}" while retrieving server info`,
+				);
+				return null;
+			})
 		: null;
 
 	return {
@@ -234,11 +234,15 @@ export async function getServerStatus(serverId: string): Promise<ServerStatus> {
 export async function createVanillaServer(
 	args: CreateVanillaServerArgs,
 ): Promise<Server> {
-	let { server_port } = args;
+	let { server_port, label } = args;
 
-	const { label, version, type, memory } = args;
+	const { version, type, memory } = args;
 	let id: string | undefined;
 	try {
+		label = uniquifyLabel(
+			label,
+			(await getServers()).map((server) => server.label),
+		);
 		id = await generateServerId();
 		const dir = serverPath(id);
 		const dockerComposeFilePath = path.resolve(dir, "docker-compose.yml");
@@ -314,12 +318,15 @@ export async function createVanillaServer(
 export async function createModrinthServer(
 	args: CreateModrinthServerArgs,
 ): Promise<Server> {
-	let { server_port } = args;
-	const { label, type, modrinth_modpack, modrinth_modpack_version, memory } =
-		args;
+	let { server_port, label } = args;
+	const { type, modrinth_modpack, modrinth_modpack_version, memory } = args;
 
 	let id: string | undefined;
 	try {
+		label = uniquifyLabel(
+			label,
+			(await getServers()).map((server) => server.label),
+		);
 		id = await generateServerId();
 		const dir = serverPath(id);
 		const dockerComposeFilePath = path.resolve(dir, "docker-compose.yml");
@@ -466,7 +473,7 @@ function enqueueConfigUpdate<T>(
 	update: () => Promise<T>,
 ): Promise<T> {
 	const previous = configUpdateQueues.get(serverId) ?? Promise.resolve();
-	const run = previous.catch(() => { }).then(update);
+	const run = previous.catch(() => {}).then(update);
 	configUpdateQueues.set(serverId, run);
 	const cleanup = () => {
 		if (configUpdateQueues.get(serverId) === run) {
@@ -1316,6 +1323,22 @@ async function pingMCServer(serverId: string): Promise<ServerInfo | null> {
 		logger.warn(newErr);
 		return null;
 	}
+}
+
+/**
+ * Disambiguates a label against existing server labels so the server list
+ * never shows identical entries (defaults like "My Server" collide fast).
+ * Appends " (2)", " (3)"… until unique.
+ */
+function uniquifyLabel(label: string, existingLabels: string[]): string {
+	if (!existingLabels.includes(label)) {
+		return label;
+	}
+	let n = 2;
+	while (existingLabels.includes(`${label} (${n})`)) {
+		n++;
+	}
+	return `${label} (${n})`;
 }
 
 async function generateServerId(): Promise<string> {
