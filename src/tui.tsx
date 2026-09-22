@@ -1,4 +1,3 @@
-#!/usr/bin/env bun
 import {
 	environmentManager,
 	QueryClient,
@@ -15,23 +14,6 @@ import { ServerBackups } from "./views/ServerBackups.view.js";
 import { ServerDetails } from "./views/ServerDetails.view.js";
 import { ServerList } from "./views/ServerList.view.js";
 
-// Bun has no `window`, so TanStack Query assumes a server environment and
-// disables all timer-based behavior: refetchInterval never fires, retries
-// default to 0 and the cache is never garbage collected. This is a
-// long-lived TUI, not an SSR render — opt back into client behavior.
-environmentManager.setIsServer(() => false);
-
-// Validate env config and create (or verify access to) every directory
-// it references before anything renders. Exits with an actionable
-// message on failure.
-validateConfig();
-
-// One kith process per serversDir — a shared multi-user install must
-// not have two instances racing on compose rewrites and port allocation.
-acquireInstanceLock();
-
-const queryClient = new QueryClient();
-
 function Exit() {
 	useEffect(() => {
 		process.exit();
@@ -41,6 +23,8 @@ function Exit() {
 }
 
 const App = () => {
+	const queryClient = new QueryClient();
+
 	return (
 		<QueryClientProvider client={queryClient}>
 			<ErrorQueueProvider>
@@ -58,6 +42,23 @@ const App = () => {
 	);
 };
 
-console.clear();
+export function runTui() {
+	// Bun has no `window`, so TanStack Query assumes a server environment and
+	// disables all timer-based behavior: refetchInterval never fires, retries
+	// default to 0 and the cache is never garbage collected. This is a
+	// long-lived TUI, not an SSR render — opt back into client behavior.
+	environmentManager.setIsServer(() => false);
 
-render(<App />);
+	// Validate env config and create (or verify access to) every directory
+	// it references before anything renders. Exits with an actionable
+	// message on failure.
+	validateConfig();
+
+	// One kith process per serversDir — a shared multi-user install must
+	// not have two instances racing on compose rewrites and port allocation.
+	acquireInstanceLock();
+
+	console.clear();
+
+	render(<App />);
+}

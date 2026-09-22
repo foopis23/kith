@@ -18,11 +18,11 @@
     "registry": "https://npm.pkg.github.com"
   },
   "scripts": {
-    "start": "bun run src/index.tsx",
+    "start": "bun run src/index.ts",
     "build": "tsc",
     "prepublishOnly": "bun run build",
-    "compile": "bun build --compile --minify src/index.tsx --outfile dist/kith",
-    "compile:all": "for target in linux-x64 linux-arm64 darwin-x64 darwin-arm64; do bun build --compile --minify --target=bun-$target src/index.tsx --outfile dist/kith-$target || exit 1; done",
+    "compile": "bun build --compile --minify src/index.ts --outfile bin/kith",
+    "compile:all": "for target in linux-x64 linux-arm64 darwin-x64 darwin-arm64; do bun build --compile --minify --target=bun-$target src/index.ts --outfile bin/kith-$target || exit 1; done",
     "format": "bunx --bun @biomejs/biome format --write",
     "lint": "bunx --bun @biomejs/biome lint --write",
     "test": "bun test",
@@ -34,6 +34,7 @@
   "dependencies": {
     "@tanstack/react-query": "^5.102.8",
     "chalk": "^6.0.0",
+    "commander": "^15.0.0",
     "docker-compose": "^1.4.2",
     "fuse.js": "^7.5.0",
     "ink": "^7.1.1",
