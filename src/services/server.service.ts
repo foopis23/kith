@@ -1302,9 +1302,14 @@ async function isContainerCreated(serverId: string): Promise<boolean> {
  */
 async function pingMCServer(serverId: string): Promise<ServerInfo | null> {
 	const dir = serverPath(serverId);
-	const result = await ComposeService.exec("mc", "mc-monitor status --json", {
-		cwd: dir,
-	});
+	const result = await ComposeService.exec(
+		"mc",
+		// biome-ignore lint/suspicious/noTemplateCurlyInString: the curly here is intended for shell variable substitution inside the container
+		["sh", "-c", "mc-monitor status --port=${SERVER_PORT:-25565} --json"],
+		{
+			cwd: dir,
+		},
+	);
 
 	if (!result?.out || result.out.length < 1) {
 		return null;

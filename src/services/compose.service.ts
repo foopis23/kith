@@ -105,7 +105,7 @@ export async function down(options: compose.IDockerComposeOptions | undefined) {
 
 export async function exec(
 	container: string,
-	command: string,
+	command: string | string[],
 	options: compose.IDockerComposeOptions | undefined,
 ) {
 	try {
