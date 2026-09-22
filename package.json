@@ -20,6 +20,7 @@
   "scripts": {
     "start": "bun run src/index.tsx",
     "build": "tsc",
+    "prepublishOnly": "bun run build",
     "compile": "bun build --compile --minify src/index.tsx --outfile dist/kith",
     "compile:all": "for target in linux-x64 linux-arm64 darwin-x64 darwin-arm64; do bun build --compile --minify --target=bun-$target src/index.tsx --outfile dist/kith-$target || exit 1; done",
     "format": "bunx --bun @biomejs/biome format --write",
