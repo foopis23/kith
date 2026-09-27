@@ -400,6 +400,27 @@ describe("ManagedServer.setBackups", () => {
 			"false",
 		);
 	});
+
+	test("replaceBackupSidecar swaps the sidecar without touching the label", () => {
+		const server = ManagedServer.fromCompose("abc", {
+			services: {
+				mc: {
+					image: "itzg/minecraft-server:java21",
+					labels: {
+						"kith.server.label": "Test",
+						"kith.backups.enabled": "false",
+					},
+				},
+				backup: { image: "itzg/mc-backup:old" },
+			},
+		});
+		server.replaceBackupSidecar({ image: "itzg/mc-backup:new" });
+		expect(server.backupSidecar).toEqual({ image: "itzg/mc-backup:new" });
+		// The recorded choice is left as it was.
+		expect(server.toCompose().services.mc.labels["kith.backups.enabled"]).toBe(
+			"false",
+		);
+	});
 });
 
 describe("ManagedServer.create", () => {

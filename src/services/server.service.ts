@@ -546,7 +546,9 @@ export async function updateServerBackupsToGlobal(
 		await BackupService.migrateToGlobalConfig(serverId, oldSidecar);
 
 		try {
-			server.setBackups(BackupService.buildBackupServiceConfig(serverId));
+			server.replaceBackupSidecar(
+				BackupService.buildBackupServiceConfig(serverId),
+			);
 			await saveComposeConfig(serverId, server.toCompose());
 		} catch (err) {
 			const newErr = new FailedToUpdateBackupsError(serverId, { cause: err });

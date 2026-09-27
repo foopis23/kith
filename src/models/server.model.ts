@@ -796,6 +796,15 @@ export class ManagedServer {
 		};
 	}
 
+	/**
+	 * Replaces the backup sidecar in place, leaving the recorded choice
+	 * label alone — re-pointing an enabled server at a new global
+	 * config isn't a new choice.
+	 */
+	replaceBackupSidecar(sidecar: ComposeService): void {
+		this.compose.services[BACKUP_SERVICE_NAME] = sidecar;
+	}
+
 	/** The JVM flags preset, derived from the flag env vars. */
 	private get flags(): ServerFlags {
 		if (booleanEnvVar.parse(this.env.USE_MEOWICE_FLAGS) === true) {
