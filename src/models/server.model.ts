@@ -157,7 +157,9 @@ export const createServerSchema = z.object({
 		z.string().min(1).max(MAX_SERVER_LABEL_LENGTH).default("My Server"),
 	),
 	version: z.string().default("LATEST"),
-	server_port: z.number().optional(), // if no port is specified, the service will find an available port automatically
+	// If no port is specified, the service finds an available one
+	// automatically. Same range as the config patch schema's port.
+	server_port: z.number().int().min(1).max(65535).optional(),
 	// The default lives here rather than on memorySchema: in Zod 4 a
 	// .default() fires even under .optional(), so a defaulted memorySchema
 	// would inject "2G" into every config patch that doesn't touch memory.

@@ -5,6 +5,7 @@
  */
 import { describe, expect, test } from "bun:test";
 import {
+	createVanillaServerSchema,
 	GamePortConflictError,
 	ManagedServer,
 } from "../src/models/server.model.js";
@@ -74,6 +75,23 @@ const modrinthCompose = {
 function environmentOf(server: ManagedServer): Record<string, string> {
 	return server.toCompose().services.mc.environment ?? {};
 }
+
+describe("createServerSchema", () => {
+	test("rejects out-of-range ports", () => {
+		for (const server_port of [0, -1, 65536, 3.5]) {
+			expect(
+				createVanillaServerSchema.safeParse({ type: "VANILLA", server_port })
+					.success,
+			).toBe(false);
+		}
+		expect(
+			createVanillaServerSchema.safeParse({
+				type: "VANILLA",
+				server_port: 25565,
+			}).success,
+		).toBe(true);
+	});
+});
 
 describe("ManagedServer.fromCompose", () => {
 	test("reads the derived views out of the compose data", () => {
