@@ -87,7 +87,7 @@ export function repositoryDisplay(serverId: string): string | null {
  * in-container mount path is translated back to the host destination.
  */
 export function repositoryDisplayFor(
-	sidecar: ComposeServiceConfig,
+	sidecar: Readonly<ComposeServiceConfig>,
 	serverId: string,
 ): string {
 	const repo = sidecar.environment?.RESTIC_REPOSITORY ?? "";
@@ -242,7 +242,7 @@ export async function initRepository(serverId: string): Promise<void> {
  * value: kith shouldn't put a repo password on screen.
  */
 export function detectDrift(
-	sidecar: ComposeServiceConfig | undefined,
+	sidecar: Readonly<ComposeServiceConfig> | undefined,
 	serverId: string,
 ): BackupDrift | null {
 	if (!sidecar) {
@@ -347,7 +347,7 @@ export function detectDrift(
  */
 export async function migrateToGlobalConfig(
 	serverId: string,
-	oldSidecar: ComposeServiceConfig,
+	oldSidecar: Readonly<ComposeServiceConfig>,
 ): Promise<void> {
 	const dir = serverPath(serverId);
 	const oldEnvironment = oldSidecar.environment ?? {};

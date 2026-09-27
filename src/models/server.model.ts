@@ -673,7 +673,7 @@ export class ManagedServer {
 	 * The backup sidecar service, when present. A live reference into the
 	 * compose data — read it, but don't mutate it.
 	 */
-	get backupSidecar(): ComposeService | undefined {
+	get backupSidecar(): Readonly<ComposeService> | undefined {
 		return this.compose.services[BACKUP_SERVICE_NAME];
 	}
 
