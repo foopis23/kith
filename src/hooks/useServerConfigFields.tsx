@@ -329,6 +329,14 @@ export function useServerConfigFields(serverId: string, enabled: boolean) {
 				placeholder: "auto",
 				onSubmit: (port) => patch({ port }),
 			},
+			{
+				id: "max_log_files",
+				type: "number",
+				label: "Max log Files",
+				value: config?.maxLogFiles,
+				placeholder: "1000",
+				onSubmit: (maxLogFiles) => patch({ maxLogFiles }),
+			},
 			comboboxField({
 				id: "image_tag",
 				type: "combobox",

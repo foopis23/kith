@@ -3,7 +3,7 @@ import fs from "node:fs/promises";
 import path from "node:path";
 import type { Readable } from "node:stream";
 import YAML from "yaml";
-import type z from "zod";
+import z from "zod";
 import { config, serverPath } from "../lib/config.js";
 import {
 	BACKUP_SERVICE_NAME,
@@ -1117,6 +1117,13 @@ function parseFlags(env: Record<string, string>): ServerFlags {
 	return "none";
 }
 
+function parseIntEnvVar(value: string | undefined): number | undefined {
+	if (value === undefined) {
+		return undefined;
+	}
+	return z.coerce.number().parse(value);
+}
+
 /**
  * Reads the editable configuration out of a compose service.
  */
@@ -1145,6 +1152,7 @@ function serverConfigFromService(service: ComposeServiceConfig): ServerConfig {
 		imageTag: imageTagOf(service.image),
 		type,
 		modpack: env.MODRINTH_MODPACK,
+		maxLogFiles: parseIntEnvVar(env.ROLLING_LOG_MAX_FILES),
 	};
 }
 
@@ -1213,6 +1221,10 @@ function applyServerConfigPatch<T extends ComposeServiceConfig>(
 	if ("flags" in patch) {
 		set("USE_AIKAR_FLAGS", patch.flags === "aikar" ? "TRUE" : undefined);
 		set("USE_MEOWICE_FLAGS", patch.flags === "meowice" ? "TRUE" : undefined);
+	}
+
+	if ("maxLogFiles" in patch) {
+		set("ROLLING_LOG_MAX_FILES", patch.maxLogFiles === undefined ? undefined : String(patch.maxLogFiles));
 	}
 
 	let ports = service.ports;
