@@ -594,9 +594,7 @@ export async function deleteServer(
 ): Promise<void> {
 	// Same queue as config updates: both touch the server's directory,
 	// so a delete must never interleave with a compose file write.
-	return enqueueConfigUpdate(serverId, () =>
-		applyServerDelete(serverId, mode),
-	);
+	return enqueueConfigUpdate(serverId, () => applyServerDelete(serverId, mode));
 }
 
 /**
