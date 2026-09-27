@@ -4,7 +4,7 @@
  * data kith doesn't manage. Pure data in, pure data out — no docker.
  */
 import { describe, expect, test } from "bun:test";
-import { ManagedServer } from "../src/models/server.model";
+import { ManagedServer } from "../src/models/server.model.js";
 
 /**
  * A representative compose doc as kith writes it, plus the kinds of
