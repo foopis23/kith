@@ -29,6 +29,19 @@ export const composeServiceSchema = z.looseObject({
 export type ComposeService = z.infer<typeof composeServiceSchema>;
 
 /**
+ * Recursively read-only: unlike `Readonly<T>`, nested objects (a
+ * service's environment map, port list, …) can't be mutated through
+ * the reference either.
+ */
+export type DeepReadonly<T> = T extends (...args: never[]) => unknown
+	? T
+	: T extends readonly (infer U)[]
+		? readonly DeepReadonly<U>[]
+		: T extends object
+			? { readonly [K in keyof T]: DeepReadonly<T[K]> }
+			: T;
+
+/**
  * A schema representing a Docker Compose configuration.
  *
  * By no means does this schema cover the full range of docker compose

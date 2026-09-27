@@ -32,7 +32,10 @@ import {
 	RestoreRequiresStoppedServerError,
 	resticSnapshotSchema,
 } from "../models/backup.model.js";
-import type { ComposeService as ComposeServiceConfig } from "../models/compose.model.js";
+import type {
+	ComposeService as ComposeServiceConfig,
+	DeepReadonly,
+} from "../models/compose.model.js";
 import * as ComposeService from "./compose.service.js";
 
 const logger = globalLogger.child({ service: "backup.service.ts" });
@@ -87,7 +90,7 @@ export function repositoryDisplay(serverId: string): string | null {
  * in-container mount path is translated back to the host destination.
  */
 export function repositoryDisplayFor(
-	sidecar: Readonly<ComposeServiceConfig>,
+	sidecar: DeepReadonly<ComposeServiceConfig>,
 	serverId: string,
 ): string {
 	const repo = sidecar.environment?.RESTIC_REPOSITORY ?? "";
@@ -242,7 +245,7 @@ export async function initRepository(serverId: string): Promise<void> {
  * value: kith shouldn't put a repo password on screen.
  */
 export function detectDrift(
-	sidecar: Readonly<ComposeServiceConfig> | undefined,
+	sidecar: DeepReadonly<ComposeServiceConfig> | undefined,
 	serverId: string,
 ): BackupDrift | null {
 	if (!sidecar) {
@@ -347,7 +350,7 @@ export function detectDrift(
  */
 export async function migrateToGlobalConfig(
 	serverId: string,
-	oldSidecar: Readonly<ComposeServiceConfig>,
+	oldSidecar: DeepReadonly<ComposeServiceConfig>,
 ): Promise<void> {
 	const dir = serverPath(serverId);
 	const oldEnvironment = oldSidecar.environment ?? {};

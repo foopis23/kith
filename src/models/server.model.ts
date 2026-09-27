@@ -19,6 +19,7 @@ import {
 	type ComposeService,
 	composeConfigSchema,
 	composeServiceSchema,
+	type DeepReadonly,
 } from "./compose.model.js";
 
 /**
@@ -682,9 +683,10 @@ export class ManagedServer {
 
 	/**
 	 * The backup sidecar service, when present. A live reference into the
-	 * compose data — read it, but don't mutate it.
+	 * compose data, deeply read-only so it can't be mutated through the
+	 * reference.
 	 */
-	get backupSidecar(): Readonly<ComposeService> | undefined {
+	get backupSidecar(): DeepReadonly<ComposeService> | undefined {
 		return this.compose.services[BACKUP_SERVICE_NAME];
 	}
 
