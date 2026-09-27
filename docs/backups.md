@@ -92,6 +92,8 @@ export B2_ACCOUNT_KEY=…
 
 Azure (`azure:`) and Google Cloud (`gs:`) work the same way. See the [configuration reference](configuration.md#cloud-credentials) for the full variable list per backend.
 
+If your shell already exports cloud credentials for other tools, set the `KITH_`-prefixed versions instead (`KITH_AWS_ACCESS_KEY_ID`, `KITH_B2_ACCOUNT_ID`, and so on). Kith prefers those over the plain variables, so your backups can use their own scoped credentials without touching anything else.
+
 Scope cloud credentials to backups only: an IAM user limited to the backup bucket, a B2 _application key_ (never the master key), an Azure SAS limited to the backup container. If they leak, the blast radius is your backup storage, not your cloud account.
 
 ## Restoring
