@@ -1,0 +1,5 @@
+[test]
+# Points the env config at a throwaway work dir for every test run —
+# see test/setup.ts. Registered here (not just via --preload in the
+# integration script) so plain `bun test` gets it too.
+preload = ["./test/setup.ts"]
