@@ -311,16 +311,17 @@ const booleanEnvVar = z
 const intEnvVar = z.coerce.number().int().min(1).optional().catch(undefined);
 
 /**
- * The container port the game listens on (SERVER_PORT). Defaults to
- * 25565, itzg's default, when the variable isn't set or doesn't parse.
+ * The container port the game listens on (SERVER_PORT). Reads as
+ * 25565, itzg's default, when the variable isn't set, doesn't parse,
+ * or falls outside the valid port range. The .catch covers undefined
+ * input too (coerced to NaN), so no .default is needed.
  */
 const gamePortEnvVar = z.coerce
 	.number()
 	.int()
 	.min(1)
 	.max(65535)
-	.catch(25565)
-	.default(25565);
+	.catch(25565);
 
 const stringEnv: EnvCodec<string> = {
 	read: (raw) => raw,
