@@ -1362,14 +1362,14 @@ async function generateServerId(): Promise<string> {
  * currently used by any managed server. Optionally excludes the specified server
  * ID from the used ports check, allowing a server to retain its current port if
  * being reassigned.
- * 
+ *
  * @param excludeServerId The server ID to exclude from the used ports check.
  * @throws Error if no available port is found within the configured range.
  * @returns The first available host port within the configured range.
  */
 async function getAvailablePort(excludeServerId?: string): Promise<number> {
 	const used = await getAllManagedServerPorts(excludeServerId);
-	
+
 	for (let port = config.portRange.min; port < config.portRange.max; port++) {
 		if (!used.has(port) && (await isPortFree(port))) {
 			return port;

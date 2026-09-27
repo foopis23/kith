@@ -1,4 +1,4 @@
-import net from "net";
+import net from "node:net";
 
 /**
  * Checks if a given port is free on the host machine.

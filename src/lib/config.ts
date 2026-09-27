@@ -54,8 +54,8 @@ const env = z
 	.parse(process.env);
 
 /**
- * Application Level Read Only Config Object. 
- * 
+ * Application Level Read Only Config Object.
+ *
  * This object just acts as a centralized, read-only source of configuration values for the application.
  */
 export const config = {
@@ -149,7 +149,7 @@ export function validateConfig(): void {
 	if (config.baseBackupDest && !config.backupPassword) {
 		process.stderr.write(
 			"kith: backups are enabled (KITH_BASE_BACKUP_DEST is set) but KITH_BACKUP_PASSWORD is not.\n" +
-			"Set KITH_BACKUP_PASSWORD to the password for your restic repositories.\n",
+				"Set KITH_BACKUP_PASSWORD to the password for your restic repositories.\n",
 		);
 		process.exit(1);
 	}
@@ -212,7 +212,7 @@ export function validateConfig(): void {
 			const code = (err as NodeJS.ErrnoException).code ?? "unknown error";
 			process.stderr.write(
 				`kith: cannot use directory "${dir}" (${envVar}): ${code}.\n` +
-				`Create it and grant read/write access, or point ${envVar} at a writable directory.\n`,
+					`Create it and grant read/write access, or point ${envVar} at a writable directory.\n`,
 			);
 			process.exit(1);
 		}
