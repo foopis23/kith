@@ -395,6 +395,16 @@ type EnvFieldValues = {
  */
 const portMappingPattern = /^(?:(\d+):)?(\d+)(?:\/(?:tcp|udp))?$/;
 
+/**
+ * Matches a host-IP-prefixed mapping, capturing the host port:
+ * `"127.0.0.1:25565:25565"`, `"[::1]:25565:25565/udp"`. The game port
+ * field deliberately doesn't recognize these (see
+ * {@link portMappingPattern}), but they still bind a host port, so
+ * port-conflict detection must see them.
+ */
+const ipPrefixedPortMappingPattern =
+	/^(?:\d{1,3}(?:\.\d{1,3}){3}|\[[0-9a-fA-F:]+\]):(\d+):\d+(?:\/(?:tcp|udp))?$/;
+
 /** Extracts the container port from a compose port mapping. */
 function containerPortOf(mapping: string): number | undefined {
 	const match = portMappingPattern.exec(mapping);
@@ -412,7 +422,8 @@ function containerPortOf(mapping: string): number | undefined {
  */
 function hostPortOf(mapping: string): number | undefined {
 	const match = portMappingPattern.exec(mapping);
-	const host = match?.[1] ?? match?.[2];
+	const host =
+		match?.[1] ?? match?.[2] ?? ipPrefixedPortMappingPattern.exec(mapping)?.[1];
 	if (!host) {
 		return undefined;
 	}

@@ -87,6 +87,18 @@ describe("ManagedServer.fromCompose", () => {
 		expect(server.backupSidecar).toBeUndefined();
 	});
 
+	test("counts host-IP-prefixed mappings as used host ports", () => {
+		const compose = structuredClone(vanillaCompose);
+		compose.services.mc.ports = [
+			"127.0.0.1:25565:25565",
+			"192.168.1.10:40000:40000",
+		];
+		const server = ManagedServer.fromCompose("abc", compose);
+		// Prefixed mappings still bind a host port, so they must count even
+		// though the game port field deliberately ignores them.
+		expect(server.hostPorts).toEqual([25565, 40000]);
+	});
+
 	test("reads the editable config", () => {
 		const config = ManagedServer.fromCompose("abc", vanillaCompose).config;
 		expect(config.motd).toBe("Hello");
