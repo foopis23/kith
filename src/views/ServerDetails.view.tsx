@@ -8,6 +8,7 @@ import { Form } from "../components/Form.js";
 import { LogBox } from "../components/LogBox.js";
 import { Menu } from "../components/Menu.js";
 import { Screen, StatusDot, useErrorQueue } from "../components/Screen.js";
+import type { KeyHint } from "../components/Screen.js";
 import { useServer } from "../hooks/useServer.js";
 import { useServerConfigFields } from "../hooks/useServerConfigFields.js";
 import type { Server } from "../models/server.model.js";
@@ -64,13 +65,18 @@ export function ServerDetails() {
 	// configure mode where the Form owns Escape (it exits the form instead).
 	// While the config is still loading the Form isn't mounted, so this view
 	// keeps owning Escape to leave configure mode. In delete mode Escape
-	// just cancels the confirmation.
+	// cancels the confirmation — but only while idle: a delete already in
+	// flight can't be cancelled, and resetting it would drop the user back
+	// into the menu of a server that's mid-deletion.
 	useInput(
 		(_, key) => {
 			if (!key.escape) {
 				return;
 			}
 			if (deleteMode) {
+				if (deleteServer.isPending) {
+					return;
+				}
 				setDeleteMode(false);
 				deleteServer.reset();
 				return;
@@ -187,6 +193,16 @@ export function ServerDetails() {
 		(showBackupSetupStatus ? 1 : 0);
 	const maxLines = Math.min(Math.max(1, (stdout?.rows ?? 24) - reserved), 24);
 
+	// While a delete is in flight there is no menu and Escape does
+	// nothing, so don't advertise keys that are dead.
+	const deleteHints: readonly KeyHint[] = deleteServer.isPending
+		? []
+		: [
+				{ key: "↑↓", action: "navigate" },
+				{ key: "enter", action: "confirm" },
+				{ key: "esc", action: "cancel" },
+			];
+
 	function handleSelect(item: (typeof items)[number]) {
 		item.onSelect?.();
 	}
@@ -231,11 +247,7 @@ export function ServerDetails() {
 								{ key: "esc", action: "exit console" },
 							]
 						: deleteMode
-							? [
-									{ key: "↑↓", action: "navigate" },
-									{ key: "enter", action: "confirm" },
-									{ key: "esc", action: "cancel" },
-								]
+							? deleteHints
 							: [
 									{ key: "↑↓", action: "navigate" },
 									{ key: "enter", action: "run action" },
