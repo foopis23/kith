@@ -2,8 +2,8 @@
 
 ## Requirements
 
-- [Bun](https://bun.com) 1.4+ (Node.js is not supported)
 - [Docker](https://www.docker.com/) with the Compose plugin
+- [Bun](https://bun.com) 1.4+ (Node.js is not supported), only for the [Bun package install](#bun-package-install). The prebuilt binary needs no runtime.
 
 The user running kith needs permission to use Docker. Kith shells out to `docker` and `docker compose` for everything, so add yourself to the `docker` group (or run rootless Docker) before starting.
 
@@ -12,16 +12,24 @@ Kith is configured entirely through environment variables, and how you install d
 - **Per-user install (default).** Kith follows the [XDG Base Directory Specification](https://specifications.freedesktop.org/basedir/latest/). Everything lives under the invoking user's home directory, with nothing to configure.
 - **Global install.** One shared kith for the whole machine, managed by a Unix group. You point the directories at system locations (`/var/lib`, `/var/log`, and so on) and set `KITH_GID` to the managing group.
 
-## Per-user install
+## Install script (recommended)
 
-This is the default model and needs no directory setup. Kith resolves its directories from the XDG environment variables, falling back to the spec's defaults under your home directory:
+Every GitHub release carries prebuilt single-file binaries for Linux and macOS (x64 and arm64). The install script downloads the latest one, verifies it against the release's checksums, and installs it:
 
-- Servers and world data: `$XDG_DATA_HOME/kith/servers`, default `~/.local/share/kith/servers`
-- Logs: `$XDG_STATE_HOME/kith/logs`, default `~/.local/state/kith/logs`
-- Cache: `$XDG_CACHE_HOME/kith`, default `~/.cache/kith`
-- Scratch files: `$TMPDIR/kith`, wiped on reboot
+```bash
+curl -fsSL https://raw.githubusercontent.com/foopis23/kith/main/scripts/install.sh | sh
+```
 
-To install the package, point Bun at GitHub Packages first. Bun's `--registry` flag and `.npmrc` scope mapping are unreliable for global installs, so use Bun's config file instead. Add this to `~/.bunfig.toml`, creating the file if it doesn't exist:
+The binary lands in `/usr/local/bin` when that's writable, otherwise `~/.local/bin` (with a reminder if the chosen spot isn't on your `PATH`). Two environment variables override the defaults:
+
+- `KITH_VERSION` — a release tag to install instead of the latest, for example `KITH_VERSION=0.4.1`.
+- `KITH_INSTALL_DIR` — where the binary goes. The script prompts for sudo itself when the target isn't writable.
+
+Upgrading is the same command again. The binary is self-contained, so there's no runtime to install or keep updated.
+
+## Bun package install
+
+Kith is also published to GitHub Packages as a Bun package, if you'd rather manage it through Bun. Point Bun at GitHub Packages first. Bun's `--registry` flag and `.npmrc` scope mapping are unreliable for global installs, so use Bun's config file instead. Add this to `~/.bunfig.toml`, creating the file if it doesn't exist:
 
 ```toml
 [install.scopes]
@@ -36,6 +44,15 @@ kith
 ```
 
 Upgrading is the same command again. "Global" here means global to your account: the package lands in `~/.bun/install/global` and the `kith` command is linked into `~/.bun/bin`, which Bun's installer puts on your `PATH`.
+
+## Per-user install
+
+This is the default model and needs no directory setup. Kith resolves its directories from the XDG environment variables, falling back to the spec's defaults under your home directory:
+
+- Servers and world data: `$XDG_DATA_HOME/kith/servers`, default `~/.local/share/kith/servers`
+- Logs: `$XDG_STATE_HOME/kith/logs`, default `~/.local/state/kith/logs`
+- Cache: `$XDG_CACHE_HOME/kith`, default `~/.cache/kith`
+- Scratch files: `$TMPDIR/kith`, wiped on reboot
 
 Files are owned by you (`KITH_UID`/`KITH_GID` default to your ids), and files carrying secrets (compose files with backup credentials, password scratch files) default to mode `600`, readable by you alone. Nothing to configure.
 
@@ -66,12 +83,12 @@ sudo usermod -aG docker alice
 sudo usermod -aG docker bob
 
 # 2. Create the directories, owned by the group. The setgid bit (2770)
-#    makes anything created inside inherit the kith group. The Bun
-#    directories get the same treatment, so any member can install or
+#    makes anything created inside inherit the kith group. The bin
+#    directory gets the same treatment, so any member can install or
 #    upgrade the shared binary.
 sudo install -d -o root -g kith -m 2770 \
   /var/lib/kith/servers /var/log/kith /var/backups/kith /var/cache/kith
-sudo install -d -o root -g kith -m 2770 /usr/local/lib/bun /usr/local/kith/bin
+sudo install -d -o root -g kith -m 2770 /usr/local/kith/bin
 ```
 
 Be aware that `docker` group membership is effectively root on the host, since a docker socket lets you mount anything into a privileged container. Only add people you already trust as admins.
@@ -107,21 +124,10 @@ fi
 
 Non-members can't read `/etc/kith/env` (mode `0640`, group `kith`), so the paths and any credentials stay invisible to other users on the machine.
 
-Each member then points Bun at the shared locations in their own `~/.bunfig.toml`. Bun reads the global config from the invoking user's home directory (or `$XDG_CONFIG_HOME`), so every member needs the same file:
-
-```toml
-[install]
-globalDir = "/usr/local/lib/bun"
-globalBinDir = "/usr/local/kith/bin"
-
-[install.scopes]
-"@foopis23" = "https://npm.pkg.github.com"
-```
-
-After that, any member can install or upgrade the shared binary:
+After that, any member can install or upgrade the shared binary by pointing the install script at the shared bin directory (writable by every group member, so no sudo needed):
 
 ```bash
-bun install -g @foopis23/kith
+curl -fsSL https://raw.githubusercontent.com/foopis23/kith/main/scripts/install.sh | KITH_INSTALL_DIR=/usr/local/kith/bin sh
 ```
 
 Members then log in again and run `kith`. The setgid directories keep new files in the `kith` group no matter who or which container creates them, and the group-read/write modes let any member manage any server. Each member's files are owned by their own uid (`KITH_UID` defaults to whoever is running), so world files show `alice:kith`, `bob:kith`, and so on.

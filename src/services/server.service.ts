@@ -17,6 +17,7 @@ import {
 } from "../lib/const.js";
 import { exists, makeDir, writeFile } from "../lib/fs.js";
 import { logger as globalLogger } from "../lib/logger.js";
+import { isPortFree } from "../lib/tcp.js";
 import {
 	type BackupState,
 	FailedToUpdateBackupsError,
@@ -1357,19 +1358,25 @@ async function generateServerId(): Promise<string> {
 }
 
 /**
- * Finds the first host port not published by any managed server,
- * starting at 25565. When `excludeServerId` is given, that server's own
- * game port mapping doesn't count as used (its other mappings — voice
- * chat, web maps — still do), so reassigning a server's port can land
- * on the port it already had.
+ * Finds the first available host port within the configured range that is not
+ * currently used by any managed server. Optionally excludes the specified server
+ * ID from the used ports check, allowing a server to retain its current port if
+ * being reassigned.
+ * 
+ * @param excludeServerId The server ID to exclude from the used ports check.
+ * @throws Error if no available port is found within the configured range.
+ * @returns The first available host port within the configured range.
  */
 async function getAvailablePort(excludeServerId?: string): Promise<number> {
-	const used = await getUsedHostPorts(excludeServerId);
-	let port = 25565;
-	while (used.has(port)) {
-		port++;
+	const used = await getAllManagedServerPorts(excludeServerId);
+	
+	for (let port = config.portRange.min; port < config.portRange.max; port++) {
+		if (!used.has(port) && (await isPortFree(port))) {
+			return port;
+		}
 	}
-	return port;
+
+	throw new Error("No available port found in the configured range.");
 }
 
 /**
@@ -1377,7 +1384,7 @@ async function getAvailablePort(excludeServerId?: string): Promise<number> {
  * reassigned game port doesn't collide with an existing server.
  * Directories that aren't valid managed servers are skipped.
  */
-async function getUsedHostPorts(
+async function getAllManagedServerPorts(
 	excludeServerId?: string,
 ): Promise<Set<number>> {
 	const files = await fs

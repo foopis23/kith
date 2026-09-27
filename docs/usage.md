@@ -1,5 +1,7 @@
 # Usage
 
+`kith` with no arguments launches the TUI. `kith --version` prints the installed version and `kith --help` lists the available flags; both exit immediately without starting the interface.
+
 ## Server list
 
 The home screen shows live status and player counts for every server. From here you pick a server to work with, or create a new one.
@@ -26,7 +28,7 @@ Watch live logs and run console commands without leaving the app.
 
 ### Configure
 
-Edit memory, port, version, and modpack settings per server. Kith rewrites the server's `docker-compose.yml` on changes, preserving anything it doesn't manage.
+Edit memory, port, version, and modpack settings per server. Kith rewrites the server's `docker-compose.yml` on changes, preserving anything it doesn't manage. The game port is published with matching host and container ports (the container's `SERVER_PORT` is set to match), so changing the port rewrites both sides of the mapping and leaves any other published ports (voice chat, web maps) untouched.
 
 ![Editing a server's memory, port, version, and modpack settings](./screenshots/kith-server-config.png)
 
@@ -43,6 +45,8 @@ Each server is a directory under `KITH_SERVERS_DIR` (`~/.local/share/kith/server
 - `docker-compose.yml`, the server definition. A standard compose file you can read and edit.
 - `patches.json`, your config patches, re-applied on every start. See [Patching mod configs](patching.md).
 - `data/`, the server's live data: world, `server.properties`, mods, plugins. Mounted into the container at `/data`.
+
+Kith creates every compose file with defaults suited to long-running servers: the container restarts unless you stop it (`restart: unless-stopped`, so servers come back after a Docker or host restart), gets a one-minute grace period to save the world on stop, runs with Aikar's JVM flags (`USE_AIKAR_FLAGS`), re-pulls its image daily, and rotates its container logs (10 MB across 5 files). All of these are ordinary compose options you can change by hand.
 
 Everything in there is yours. Edit configs directly, drop files into `data/`, add services to the compose file. Kith only rewrites the parts it manages and preserves the rest. Servers are ordinary Docker Compose projects, so `docker compose` commands work in the directory too.
 
