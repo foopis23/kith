@@ -1,5 +1,10 @@
 import path from "node:path";
 import pino from "pino";
+// Imported directly (not via pino.transport) so the bundler includes it:
+// pino.transport resolves `target: "pino-roll"` by name at runtime inside a
+// worker thread, which fails in `bun build --compile` binaries where
+// node_modules doesn't exist. Used as a plain destination stream instead.
+import pinoRoll from "pino-roll";
 import { config } from "./config.js";
 import { makeDirSync } from "./fs.js";
 
@@ -17,7 +22,7 @@ try {
 			(err as NodeJS.ErrnoException).code;
 		throw new Error(
 			`Cannot create a log directory — tried "${config.logDir}" and fallback "./data/logs". ` +
-			`Last error: ${code}. Fix permissions on one of them, or set KITH_LOG_DIR to a writable path.`,
+				`Last error: ${code}. Fix permissions on one of them, or set KITH_LOG_DIR to a writable path.`,
 			{ cause: innerErr },
 		);
 	}
@@ -27,18 +32,15 @@ try {
 	LOG_FILE = fallback;
 }
 
-const transport = pino.transport({
-	target: 'pino-roll',
-	options: {
-		file: LOG_FILE,
-		dateFormat: 'yyyy.MM.dd',
-		frequency: 'daily',
-		limit: {
-			count: 90,
-			removeOtherLogFiles: true
-		}
-	}
-})
+const destination = await pinoRoll({
+	file: LOG_FILE,
+	dateFormat: "yyyy.MM.dd",
+	frequency: "daily",
+	limit: {
+		count: 90,
+		removeOtherLogFiles: true,
+	},
+});
 
 export const logger = pino(
 	{
@@ -52,5 +54,5 @@ export const logger = pino(
 			error: pino.stdSerializers.err,
 		},
 	},
-	transport,
+	destination,
 );
