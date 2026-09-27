@@ -219,6 +219,8 @@ export async function createVanillaServer(
 				VERSION: `${version}`,
 				MEMORY: memory,
 			},
+			uid: config.uid,
+			gid: config.gid,
 		});
 
 		const backupService = BackupService.backupsGloballyEnabled()
@@ -299,6 +301,8 @@ export async function createModrinthServer(
 				VERSION: modrinth_modpack_version === "latest" ? "latest" : undefined,
 				MEMORY: memory,
 			},
+			uid: config.uid,
+			gid: config.gid,
 		});
 
 		const backupService = BackupService.backupsGloballyEnabled()

@@ -1,5 +1,4 @@
 import { z } from "zod";
-import { config } from "../lib/config.js";
 import {
 	BACKUP_SERVICE_NAME,
 	BACKUPS_ENABLED_LABEL,
@@ -482,6 +481,13 @@ export type NewManagedServerArgs = {
 	 * apply for those.
 	 */
 	environment?: Record<string, string | undefined>;
+	/**
+	 * The host identity the container writes files as, recorded in the
+	 * UID/GID env vars. Negative (the default) on platforms without
+	 * real ids — the variables are omitted and itzg's defaults apply.
+	 */
+	uid?: number;
+	gid?: number;
 };
 
 /**
@@ -520,7 +526,7 @@ export class ManagedServer {
 	 * mounts, EULA, …) plus the given image, game port and itzg env.
 	 */
 	static create(args: NewManagedServerArgs): ManagedServer {
-		const { id, label, image, port, environment } = args;
+		const { id, label, image, port, environment, uid = -1, gid = -1 } = args;
 		return new ManagedServer(id, {
 			services: {
 				[MC_SERVICE_NAME]: {
@@ -545,8 +551,8 @@ export class ManagedServer {
 						EULA: "TRUE",
 						USE_AIKAR_FLAGS: "TRUE",
 						PATCH_DEFINITIONS: PATCH_FILE_CONTAINER_PATH,
-						...(config.uid >= 0 && config.gid >= 0
-							? { UID: `${config.uid}`, GID: `${config.gid}` }
+						...(uid >= 0 && gid >= 0
+							? { UID: `${uid}`, GID: `${gid}` }
 							: {}),
 						...environment,
 						[GAME_PORT_ENV]: `${port}`,

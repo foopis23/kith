@@ -437,6 +437,28 @@ describe("ManagedServer.create", () => {
 		expect("VERSION" in environmentOf(server)).toBe(false);
 	});
 
+	test("records the host identity in UID/GID env vars when given", () => {
+		const withIds = ManagedServer.create({
+			id: "abc",
+			label: "Fresh",
+			image: "itzg/minecraft-server:java21",
+			port: 25565,
+			uid: 1000,
+			gid: 1001,
+		});
+		expect(environmentOf(withIds).UID).toBe("1000");
+		expect(environmentOf(withIds).GID).toBe("1001");
+
+		const withoutIds = ManagedServer.create({
+			id: "abc",
+			label: "Fresh",
+			image: "itzg/minecraft-server:java21",
+			port: 25565,
+		});
+		expect("UID" in environmentOf(withoutIds)).toBe(false);
+		expect("GID" in environmentOf(withoutIds)).toBe(false);
+	});
+
 	test("round-trips through fromCompose with the expected config", () => {
 		const created = ManagedServer.create({
 			id: "abc",
