@@ -36,6 +36,8 @@ When `KITH_BASE_BACKUP_DEST` points at a remote backend, kith forwards the match
 | Azure        | `AZURE_ACCOUNT_NAME`, plus one of `AZURE_ACCOUNT_KEY`, `AZURE_ACCOUNT_SAS`, `AZURE_FORCE_CLI_CREDENTIAL`. Optionally `AZURE_ENDPOINT_SUFFIX`. |
 | Google Cloud | `GOOGLE_PROJECT_ID`, plus one of `GOOGLE_APPLICATION_CREDENTIALS`, `GOOGLE_ACCESS_TOKEN` |
 
+Each of these also has a `KITH_`-prefixed override (for example `KITH_AWS_ACCESS_KEY_ID`, `KITH_B2_ACCOUNT_KEY`) that takes precedence when both are set. Use the prefixed form when your shell or host already exports cloud credentials for other tools and you want kith's backups to use a different set.
+
 Scope these to backups only: an IAM user limited to the backup bucket, a B2 _application key_ (never the master key), an Azure SAS limited to the backup container.
 
 ## Ownership and file modes
