@@ -592,6 +592,22 @@ export async function deleteServer(
 	serverId: string,
 	mode: DeleteServerMode,
 ): Promise<void> {
+	// Same queue as config updates: both touch the server's directory,
+	// so a delete must never interleave with a compose file write.
+	return enqueueConfigUpdate(serverId, () =>
+		applyServerDelete(serverId, mode),
+	);
+}
+
+/**
+ * Brings the stack down and archives or erases the server's directory,
+ * see {@link deleteServer}. Must only be called through the per-server
+ * update queue.
+ */
+async function applyServerDelete(
+	serverId: string,
+	mode: DeleteServerMode,
+): Promise<void> {
 	const dir = serverPath(serverId);
 
 	// A running stack can't survive its directory being renamed or
