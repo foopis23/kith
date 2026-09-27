@@ -412,6 +412,16 @@ describe("ManagedServer.applyConfigPatch", () => {
 		);
 	});
 
+	test("ignores a modpack version patch on a non-MODRINTH server", () => {
+		const server = ManagedServer.fromCompose("abc", vanillaCompose);
+		server.applyConfigPatch({ modpackVersion: "abc123" });
+		const environment = environmentOf(server);
+		// VERSION keeps the server pinned; no modpack env vars appear.
+		expect(environment.VERSION).toBe("1.21.4");
+		expect("MODRINTH_MODPACK_VERSION" in environment).toBe(false);
+		expect(server.config.modpackVersion).toBeUndefined();
+	});
+
 	test("mirrors creation's VERSION interplay for modpack versions", () => {
 		const server = ManagedServer.fromCompose("abc", modrinthCompose);
 

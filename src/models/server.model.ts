@@ -748,7 +748,10 @@ export class ManagedServer {
 			}
 		}
 
-		if ("modpackVersion" in patch) {
+		// MODRINTH_MODPACK_VERSION only means something to a MODRINTH
+		// server — on any other type the field reads as undefined too, and
+		// applying it would clobber VERSION for nothing.
+		if ("modpackVersion" in patch && this.type === "MODRINTH") {
 			// Mirrors creation: "latest" (or clearing) tracks the newest pack
 			// release via VERSION=latest; a pinned version drops VERSION.
 			if (
