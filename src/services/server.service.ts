@@ -3,26 +3,18 @@ import fs from "node:fs/promises";
 import path from "node:path";
 import type { Readable } from "node:stream";
 import YAML from "yaml";
-import z from "zod";
+import type z from "zod";
 import { config, serverPath } from "../lib/config.js";
 import {
-	BACKUP_SERVICE_NAME,
-	BACKUPS_ENABLED_LABEL,
 	DATA_DIR_NAME,
-	GAME_PORT_ENV,
 	MC_SERVICE_NAME,
 	PATCH_FILE_CONTAINER_PATH,
 	PATCH_FILE_NAME,
-	SERVER_LABEL,
 } from "../lib/const.js";
 import { exists, makeDir, writeFile } from "../lib/fs.js";
 import { logger as globalLogger } from "../lib/logger.js";
 import { isPortFree } from "../lib/tcp.js";
-import {
-	type BackupState,
-	FailedToUpdateBackupsError,
-} from "../models/backup.model.js";
-import type { ComposeService as ComposeServiceConfig } from "../models/compose.model.js";
+import { FailedToUpdateBackupsError } from "../models/backup.model.js";
 import type { LogLine, LogStream } from "../models/log.model.js";
 import { safeTextSchema } from "../models/log.model.js";
 import type {
@@ -44,14 +36,13 @@ import {
 	FailedToStopServerError,
 	FailedToUpdateServerConfigError,
 	InvalidServerConfigPatchError,
+	ManagedServer,
 	MissingCommandResultError,
-	managedComposeConfigSchema,
 	mcMonitorResponseSchema,
 	type Server,
 	type ServerConfig,
 	type ServerConfigPatch,
 	ServerDirectoryDoesNotContainComposeFileError,
-	type ServerFlags,
 	type ServerInfo,
 	ServersDirectoryDoesNotExistError,
 	serverConfigPatchSchema,
@@ -68,37 +59,6 @@ import {
 import { parseModrinthModpack } from "./modrinth.service.js";
 
 const logger = globalLogger.child({ service: "server.service.ts" });
-
-const BASE_COMPOSE_CONFIG = {
-	services: {
-		mc: {
-			pull_policy: "daily",
-			tty: true,
-			stdin_open: true,
-			stop_grace_period: "1m",
-			restart: "unless-stopped",
-			logging: {
-				driver: "json-file",
-				options: {
-					"max-size": "10m",
-					"max-file": "5",
-				},
-			},
-			environment: {
-				EULA: "TRUE",
-				USE_AIKAR_FLAGS: "TRUE",
-				PATCH_DEFINITIONS: PATCH_FILE_CONTAINER_PATH,
-				...(config.uid >= 0 && config.gid >= 0
-					? { UID: `${config.uid}`, GID: `${config.gid}` }
-					: {}),
-			},
-			volumes: [
-				`./${DATA_DIR_NAME}:/data`,
-				`./${PATCH_FILE_NAME}:${PATCH_FILE_CONTAINER_PATH}:ro`,
-			],
-		},
-	},
-} as const;
 
 //#region Public API
 
@@ -179,9 +139,9 @@ export async function getServer(
 		}
 	}
 
-	let composeConfig: KithComposeConfig;
+	let server: ManagedServer;
 	try {
-		composeConfig = await loadComposeConfig(serverId);
+		server = await loadServer(serverId);
 	} catch (err) {
 		const newErr = new FailedToFetchServerInfoError(serverId, {
 			cause: err,
@@ -192,17 +152,11 @@ export async function getServer(
 
 	return {
 		id: serverId,
-		label: composeConfig.services.mc.labels[SERVER_LABEL],
-		port: findHostPort(
-			composeConfig.services.mc.ports,
-			gameContainerPort(composeConfig.services.mc),
-		),
+		label: server.label,
+		port: server.port,
 		dir,
-		backups: backupStateOf(composeConfig),
-		backupDrift: BackupService.detectDrift(
-			composeConfig.services[BACKUP_SERVICE_NAME],
-			serverId,
-		),
+		backups: server.backupsState,
+		backupDrift: BackupService.detectDrift(server.backupSidecar, serverId),
 	};
 }
 
@@ -246,7 +200,6 @@ export async function createVanillaServer(
 		);
 		id = await generateServerId();
 		const dir = serverPath(id);
-		const dockerComposeFilePath = path.resolve(dir, "docker-compose.yml");
 
 		await makeDir(dir);
 
@@ -256,38 +209,26 @@ export async function createVanillaServer(
 
 		const javaTag = await getJavaVersionForMinecraftVersion(version);
 
+		const server = ManagedServer.create({
+			id,
+			label: label || id,
+			image: `itzg/minecraft-server:${javaTag}`,
+			port: server_port,
+			environment: {
+				TYPE: `${type}`,
+				VERSION: `${version}`,
+				MEMORY: memory,
+			},
+		});
+
 		const backupService = BackupService.backupsGloballyEnabled()
 			? BackupService.buildBackupServiceConfig(id)
 			: undefined;
+		if (backupService) {
+			server.setBackups(backupService);
+		}
 
-		const composeConfig = {
-			...BASE_COMPOSE_CONFIG,
-			services: {
-				...BASE_COMPOSE_CONFIG.services,
-				mc: {
-					...BASE_COMPOSE_CONFIG.services.mc,
-					image: `itzg/minecraft-server:${javaTag}`,
-					labels: {
-						[SERVER_LABEL]: label || id,
-						...(backupService ? { [BACKUPS_ENABLED_LABEL]: "true" } : {}),
-					},
-					ports: [`${server_port}:${server_port}`],
-					environment: {
-						...BASE_COMPOSE_CONFIG.services.mc.environment,
-						TYPE: `${type}`,
-						VERSION: `${version}`,
-						MEMORY: memory,
-						[GAME_PORT_ENV]: `${server_port}`,
-					},
-				},
-				...(backupService ? { [BACKUP_SERVICE_NAME]: backupService } : {}),
-			},
-		};
-		await writeFile(
-			dockerComposeFilePath,
-			YAML.stringify(composeConfig, { indent: 2 }),
-			{ secret: true },
-		);
+		await saveComposeConfig(id, server.toCompose());
 		await makeDir(path.resolve(dir, DATA_DIR_NAME));
 		await ensurePatchFile(dir);
 		if (backupService) {
@@ -330,7 +271,6 @@ export async function createModrinthServer(
 		);
 		id = await generateServerId();
 		const dir = serverPath(id);
-		const dockerComposeFilePath = path.resolve(dir, "docker-compose.yml");
 
 		await makeDir(dir);
 
@@ -344,45 +284,31 @@ export async function createModrinthServer(
 			modrinth_modpack_version,
 		);
 
+		const server = ManagedServer.create({
+			id,
+			label: label || id,
+			image: `itzg/minecraft-server:${javaTag}`,
+			port: server_port,
+			environment: {
+				TYPE: `${type}`,
+				MODRINTH_MODPACK: identifier,
+				MODRINTH_MODPACK_VERSION:
+					modrinth_modpack_version === "latest"
+						? undefined
+						: modrinth_modpack_version,
+				VERSION: modrinth_modpack_version === "latest" ? "latest" : undefined,
+				MEMORY: memory,
+			},
+		});
+
 		const backupService = BackupService.backupsGloballyEnabled()
 			? BackupService.buildBackupServiceConfig(id)
 			: undefined;
+		if (backupService) {
+			server.setBackups(backupService);
+		}
 
-		const composeConfig = {
-			...BASE_COMPOSE_CONFIG,
-			services: {
-				...BASE_COMPOSE_CONFIG.services,
-				mc: {
-					...BASE_COMPOSE_CONFIG.services.mc,
-					image: `itzg/minecraft-server:${javaTag}`,
-					labels: {
-						[SERVER_LABEL]: label || id,
-						...(backupService ? { [BACKUPS_ENABLED_LABEL]: "true" } : {}),
-					},
-					ports: [`${server_port}:${server_port}`],
-					environment: {
-						...BASE_COMPOSE_CONFIG.services.mc.environment,
-						TYPE: `${type}`,
-						MODRINTH_MODPACK: identifier,
-						MODRINTH_MODPACK_VERSION:
-							modrinth_modpack_version === "latest"
-								? undefined
-								: modrinth_modpack_version,
-						VERSION:
-							modrinth_modpack_version === "latest" ? "latest" : undefined,
-						MEMORY: memory,
-						[GAME_PORT_ENV]: `${server_port}`,
-					},
-				},
-				...(backupService ? { [BACKUP_SERVICE_NAME]: backupService } : {}),
-			},
-		};
-
-		await writeFile(
-			dockerComposeFilePath,
-			YAML.stringify(composeConfig, { indent: 2 }),
-			{ secret: true },
-		);
+		await saveComposeConfig(id, server.toCompose());
 		await makeDir(path.resolve(dir, DATA_DIR_NAME));
 		await ensurePatchFile(dir);
 
@@ -417,8 +343,8 @@ export async function createModrinthServer(
  */
 export async function getServerConfig(serverId: string): Promise<ServerConfig> {
 	try {
-		const composeConfig = await loadComposeConfig(serverId);
-		return serverConfigFromService(composeConfig.services.mc);
+		const server = await loadServer(serverId);
+		return server.config;
 	} catch (err) {
 		const newErr = new FailedToFetchServerConfigError(serverId, {
 			cause: err,
@@ -495,8 +421,7 @@ async function applyServerConfigUpdate(
 ): Promise<ServerConfig> {
 	logger.info({ serverId, ...patch }, "Applying server config update");
 	try {
-		const composeConfig = await loadComposeConfig(serverId);
-		const current = composeConfig.services.mc;
+		const server = await loadServer(serverId);
 
 		let resolved = patch;
 		if ("port" in patch && patch.port === undefined) {
@@ -509,20 +434,17 @@ async function applyServerConfigUpdate(
 		// needs java17 -> java21), so the image tag is re-resolved just like
 		// at creation — unless the patch pins an explicit tag.
 		if (!("imageTag" in resolved)) {
-			const tag = await resolveImageTagForPatch(current, resolved);
+			const tag = await resolveImageTagForPatch(server, resolved);
 			if (tag) {
 				resolved = { ...resolved, imageTag: tag };
 			}
 		}
 
-		const updated = applyServerConfigPatch(current, resolved);
+		server.applyConfigPatch(resolved);
 
-		await saveComposeConfig(serverId, {
-			...composeConfig,
-			services: { ...composeConfig.services, mc: updated },
-		});
+		await saveComposeConfig(serverId, server.toCompose());
 
-		return serverConfigFromService(updated);
+		return server.config;
 	} catch (err) {
 		const newErr = new FailedToUpdateServerConfigError(serverId, {
 			cause: err,
@@ -569,25 +491,11 @@ async function applyBackupsUpdate(
 	enabled: boolean,
 ): Promise<void> {
 	try {
-		const composeConfig = await loadComposeConfig(serverId);
-		const services = { ...composeConfig.services };
-
-		if (enabled) {
-			services[BACKUP_SERVICE_NAME] =
-				BackupService.buildBackupServiceConfig(serverId);
-		} else {
-			delete services[BACKUP_SERVICE_NAME];
-		}
-
-		services.mc = {
-			...services.mc,
-			labels: {
-				...services.mc.labels,
-				[BACKUPS_ENABLED_LABEL]: String(enabled),
-			},
-		};
-
-		await saveComposeConfig(serverId, { ...composeConfig, services });
+		const server = await loadServer(serverId);
+		server.setBackups(
+			enabled ? BackupService.buildBackupServiceConfig(serverId) : undefined,
+		);
+		await saveComposeConfig(serverId, server.toCompose());
 	} catch (err) {
 		const newErr = new FailedToUpdateBackupsError(serverId, { cause: err });
 		logger.error({ error: newErr }, newErr.message);
@@ -623,8 +531,8 @@ export async function updateServerBackupsToGlobal(
 ): Promise<void> {
 	// Same queue as config updates: both rewrite the compose file.
 	return enqueueConfigUpdate(serverId, async () => {
-		const composeConfig = await loadComposeConfig(serverId);
-		const oldSidecar = composeConfig.services[BACKUP_SERVICE_NAME];
+		const server = await loadServer(serverId);
+		const oldSidecar = server.backupSidecar;
 		if (!oldSidecar) {
 			// No sidecar means there's nothing to reconcile — enabling
 			// backups is the right action for that server instead.
@@ -634,14 +542,8 @@ export async function updateServerBackupsToGlobal(
 		await BackupService.migrateToGlobalConfig(serverId, oldSidecar);
 
 		try {
-			await saveComposeConfig(serverId, {
-				...composeConfig,
-				services: {
-					...composeConfig.services,
-					[BACKUP_SERVICE_NAME]:
-						BackupService.buildBackupServiceConfig(serverId),
-				},
-			});
+			server.setBackups(BackupService.buildBackupServiceConfig(serverId));
+			await saveComposeConfig(serverId, server.toCompose());
 		} catch (err) {
 			const newErr = new FailedToUpdateBackupsError(serverId, { cause: err });
 			logger.error({ error: newErr }, newErr.message);
@@ -937,21 +839,6 @@ async function ensurePatchFileIfMounted(dir: string): Promise<void> {
 }
 
 /**
- * Derives the server's backup state from its compose file: the sidecar's
- * presence wins, otherwise the recorded opt-out label, otherwise the
- * server simply predates backups.
- */
-function backupStateOf(composeConfig: KithComposeConfig): BackupState {
-	if (composeConfig.services[BACKUP_SERVICE_NAME]) {
-		return "enabled";
-	}
-	if (composeConfig.services.mc.labels[BACKUPS_ENABLED_LABEL] === "false") {
-		return "opted_out";
-	}
-	return "not_set_up";
-}
-
-/**
  * Determines the status of the Minecraft server based on container creation and server information.
  *
  * @param isContainerCreated Whether the Minecraft container has been created.
@@ -967,18 +854,19 @@ function determineStatus(
 }
 
 /**
- * Reads and parses the Kith compose configuration for the specified Minecraft server.
+ * Reads the compose file for the specified Minecraft server and wraps it
+ * in a ManagedServer — the object that owns all compose mapping.
  *
  * @throws Will throw an error if the compose file cannot be read, parsed, or validated.
  *
  * @param serverId server id of the Minecraft server whose compose file is to be read.
- * @returns The parsed Kith compose configuration for the specified server.
+ * @returns The managed server backed by the server's compose file.
  */
-async function loadComposeConfig(serverId: string): Promise<KithComposeConfig> {
+async function loadServer(serverId: string): Promise<ManagedServer> {
 	const dir = serverPath(serverId);
 	const composeConfig = await ComposeService.loadComposeConfig(dir);
 	try {
-		return managedComposeConfigSchema.parse(composeConfig);
+		return ManagedServer.fromCompose(serverId, composeConfig);
 	} catch (err) {
 		const newErr = new UnexpectedKithComposeConfigError(
 			dir,
@@ -1009,280 +897,26 @@ async function saveComposeConfig(
 }
 
 /**
- * Matches a compose port mapping, capturing the optional host port and
- * the container port: `"25565"`, `"25565:25565"`, `"24454:24454/udp"`.
- *
- * Deliberately does not support host-IP-prefixed (`"127.0.0.1:25565:25565"`)
- * or IPv6 mappings: kith only writes plain port mappings itself, and
- * servers are expected to be created and managed through kith. A
- * hand-edited mapping in one of those forms is treated as an unmanaged
- * "other" port — it survives rewrites untouched, but the game port field
- * won't recognize it.
- */
-const portMappingPattern = /^(?:(\d+):)?(\d+)(?:\/(?:tcp|udp))?$/;
-
-/** Extracts the container port from a compose port mapping. */
-function containerPortOf(mapping: string): number | undefined {
-	const match = portMappingPattern.exec(mapping);
-	if (!match?.[2]) {
-		return undefined;
-	}
-	const parsed = Number.parseInt(match[2], 10);
-	return Number.isNaN(parsed) ? undefined : parsed;
-}
-
-/**
- * Extracts the host port from a compose port mapping. A mapping with no
- * host part (`"25565"`) counts as its container port — conservative,
- * since Docker would publish it on an ephemeral port.
- */
-function hostPortOf(mapping: string): number | undefined {
-	const match = portMappingPattern.exec(mapping);
-	const host = match?.[1] ?? match?.[2];
-	if (!host) {
-		return undefined;
-	}
-	const parsed = Number.parseInt(host, 10);
-	return Number.isNaN(parsed) ? undefined : parsed;
-}
-
-/**
- * Finds the host port publishing the given container port, e.g. the
- * `"25565:25565"` in `["25565:25565", "24454:24454/udp"]`.
- */
-function findHostPort(
-	ports: string[] | undefined,
-	containerPort: number,
-): number | undefined {
-	const mapping = ports?.find(
-		(port) => containerPortOf(port) === containerPort,
-	);
-	return mapping ? hostPortOf(mapping) : undefined;
-}
-
-/**
- * The container port the Minecraft server listens on, read from the
- * SERVER_PORT env var the compose file is created with. Defaults to
- * 25565, itzg's default, when the variable isn't set.
- */
-function gameContainerPort(service: ComposeServiceConfig): number {
-	const raw = service.environment?.[GAME_PORT_ENV];
-	if (!raw) {
-		return 25565;
-	}
-	const parsed = Number.parseInt(raw, 10);
-	return Number.isNaN(parsed) ? 25565 : parsed;
-}
-
-/**
- * Extracts the tag from an image reference, e.g. `"java21"` from
- * `"itzg/minecraft-server:java21"`. A digest or missing tag yields
- * `undefined`.
- */
-function imageTagOf(image: string): string | undefined {
-	const name = image.split("@")[0] ?? image;
-	const separator = name.lastIndexOf(":");
-
-	// No colon, or the colon belongs to a registry port ("host:5000/img").
-	if (separator === -1 || separator < name.lastIndexOf("/")) {
-		return undefined;
-	}
-
-	return name.slice(separator + 1);
-}
-
-/**
- * Parses a boolean env var value ("TRUE"/"false") into a boolean.
- * Returns `undefined` for anything else instead of throwing — an
- * unexpected value shouldn't break the whole config screen.
- */
-function parseBooleanEnvVar(value: string | undefined): boolean | undefined {
-	if (value === undefined) {
-		return undefined;
-	}
-
-	const normalized = value.toLowerCase();
-	if (normalized === "true") return true;
-	if (normalized === "false") return false;
-	return undefined;
-}
-
-/**
- * Derives the JVM flags preset from the flag env vars. "none" when
- * neither is enabled.
- */
-function parseFlags(env: Record<string, string>): ServerFlags {
-	if (parseBooleanEnvVar(env.USE_MEOWICE_FLAGS) === true) return "meowice";
-	if (parseBooleanEnvVar(env.USE_AIKAR_FLAGS) === true) return "aikar";
-	return "none";
-}
-
-function parseIntEnvVar(value: string | undefined): number | undefined {
-	if (value === undefined) {
-		return undefined;
-	}
-	return z.coerce.number().parse(value);
-}
-
-/**
- * Reads the editable configuration out of a compose service.
- */
-function serverConfigFromService(service: ComposeServiceConfig): ServerConfig {
-	const env = service.environment ?? {};
-	const type = env.TYPE;
-
-	return {
-		motd: env.MOTD,
-		difficulty: env.DIFFICULTY,
-		hardcore: parseBooleanEnvVar(env.HARDCORE),
-		mode: env.MODE,
-		level: env.LEVEL,
-		enableWhitelist: parseBooleanEnvVar(env.ENABLE_WHITELIST),
-		initialEnabledPacks: env.INITIAL_ENABLED_PACKS,
-		seed: env.SEED,
-		memory: env.MEMORY,
-		version: env.VERSION,
-		// Creation omits MODRINTH_MODPACK_VERSION for "latest".
-		modpackVersion:
-			type === "MODRINTH"
-				? (env.MODRINTH_MODPACK_VERSION ?? "latest")
-				: undefined,
-		flags: parseFlags(env),
-		port: findHostPort(service.ports, gameContainerPort(service)),
-		imageTag: imageTagOf(service.image),
-		type,
-		modpack: env.MODRINTH_MODPACK,
-		maxLogFiles: parseIntEnvVar(env.ROLLING_LOG_MAX_FILES),
-	};
-}
-
-/**
- * Applies a config patch to a compose service, returning a new service.
- * The original is left untouched.
- *
- * Only the env vars the config model owns are modified — unrelated
- * variables (EULA, TYPE, MEMORY, modpack settings, …) are preserved, as
- * are extra port mappings (voice chat, web maps). A patch value of
- * `undefined` removes the setting's env var, letting itzg's default
- * apply again.
- */
-function applyServerConfigPatch<T extends ComposeServiceConfig>(
-	service: T,
-	patch: ServerConfigPatch,
-): T {
-	const environment = { ...service.environment };
-
-	const set = (key: string, value: string | undefined) => {
-		if (value === undefined) {
-			delete environment[key];
-		} else {
-			environment[key] = value;
-		}
-	};
-
-	if ("motd" in patch) set("MOTD", patch.motd);
-	if ("difficulty" in patch) set("DIFFICULTY", patch.difficulty);
-	if ("hardcore" in patch) {
-		set(
-			"HARDCORE",
-			patch.hardcore === undefined ? undefined : String(patch.hardcore),
-		);
-	}
-	if ("mode" in patch) set("MODE", patch.mode);
-	if ("level" in patch) set("LEVEL", patch.level);
-	if ("enableWhitelist" in patch) {
-		set(
-			"ENABLE_WHITELIST",
-			patch.enableWhitelist === undefined
-				? undefined
-				: String(patch.enableWhitelist),
-		);
-	}
-	if ("initialEnabledPacks" in patch) {
-		set("INITIAL_ENABLED_PACKS", patch.initialEnabledPacks);
-	}
-	if ("seed" in patch) set("SEED", patch.seed);
-	if ("memory" in patch) set("MEMORY", patch.memory);
-	if ("version" in patch) set("VERSION", patch.version);
-	if ("modpackVersion" in patch) {
-		// Mirrors creation: "latest" (or clearing) tracks the newest pack
-		// release via VERSION=latest; a pinned version drops VERSION.
-		if (
-			patch.modpackVersion === undefined ||
-			patch.modpackVersion === "latest"
-		) {
-			set("MODRINTH_MODPACK_VERSION", undefined);
-			set("VERSION", "latest");
-		} else {
-			set("MODRINTH_MODPACK_VERSION", patch.modpackVersion);
-			set("VERSION", undefined);
-		}
-	}
-	if ("flags" in patch) {
-		set("USE_AIKAR_FLAGS", patch.flags === "aikar" ? "TRUE" : undefined);
-		set("USE_MEOWICE_FLAGS", patch.flags === "meowice" ? "TRUE" : undefined);
-	}
-
-	if ("maxLogFiles" in patch) {
-		set("ROLLING_LOG_MAX_FILES", patch.maxLogFiles === undefined ? undefined : String(patch.maxLogFiles));
-	}
-
-	let ports = service.ports;
-	if ("port" in patch) {
-		// Replace the mapping for the game port, keeping every other
-		// published port (voice chat, web maps) as-is. The game port's host
-		// and container ports always match (SERVER_PORT), so a port change
-		// rewrites both sides of the mapping.
-		const containerPort = gameContainerPort(service);
-		const others = (service.ports ?? []).filter(
-			(port) => containerPortOf(port) !== containerPort,
-		);
-
-		if (patch.port === undefined) {
-			ports = others;
-			set(GAME_PORT_ENV, undefined);
-		} else {
-			ports = [`${patch.port}:${patch.port}`, ...others];
-			set(GAME_PORT_ENV, String(patch.port));
-		}
-	}
-
-	let image = service.image;
-	if ("imageTag" in patch && patch.imageTag !== undefined) {
-		const tag = imageTagOf(service.image);
-		image = tag
-			? `${service.image.slice(0, service.image.lastIndexOf(":"))}:${patch.imageTag}`
-			: `${service.image}:${patch.imageTag}`;
-	}
-
-	// The spread preserves every property of T (labels and all); only the
-	// patched slices are replaced.
-	return { ...service, image, ports, environment };
-}
-
-/**
  * Resolves the image tag for a patch that changes the game or modpack
  * version, the same way creation does. Returns `undefined` when the
  * patch doesn't touch versions (or a modpack server is missing its
  * MODRINTH_MODPACK), leaving the image alone.
  */
 async function resolveImageTagForPatch(
-	service: ComposeServiceConfig,
+	server: ManagedServer,
 	patch: ServerConfigPatch,
 ): Promise<string | undefined> {
-	const env = service.environment ?? {};
-
-	if (env.TYPE === "MODRINTH" && "modpackVersion" in patch) {
-		if (!env.MODRINTH_MODPACK) {
+	if (server.type === "MODRINTH" && "modpackVersion" in patch) {
+		if (!server.modpack) {
 			return undefined;
 		}
 		return getJavaVersionForModpackVersion(
-			env.MODRINTH_MODPACK,
+			server.modpack,
 			patch.modpackVersion ?? "latest",
 		);
 	}
 
-	if (env.TYPE !== "MODRINTH" && "version" in patch) {
+	if (server.type !== "MODRINTH" && "version" in patch) {
 		return getJavaVersionForMinecraftVersion(patch.version ?? "latest");
 	}
 
@@ -1421,26 +1055,19 @@ async function getAllManagedServerPorts(
 			continue;
 		}
 
-		let service: ComposeServiceConfig;
+		let server: ManagedServer;
 		try {
-			const composeConfig = await loadComposeConfig(file.name);
-			service = composeConfig.services.mc;
+			server = await loadServer(file.name);
 		} catch {
 			continue; // not a managed server — nothing to count
 		}
 
-		const gamePort = gameContainerPort(service);
-		for (const mapping of service.ports ?? []) {
-			if (
-				file.name === excludeServerId &&
-				containerPortOf(mapping) === gamePort
-			) {
+		for (const host of server.hostPorts) {
+			// The excluded server's own game port is free to be picked again.
+			if (file.name === excludeServerId && host === server.port) {
 				continue;
 			}
-			const host = hostPortOf(mapping);
-			if (host !== undefined) {
-				used.add(host);
-			}
+			used.add(host);
 		}
 	}
 

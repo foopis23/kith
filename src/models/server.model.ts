@@ -1,8 +1,26 @@
 import { z } from "zod";
-import { SERVER_LABEL } from "../lib/const.js";
+import { config } from "../lib/config.js";
+import {
+	BACKUP_SERVICE_NAME,
+	BACKUPS_ENABLED_LABEL,
+	DATA_DIR_NAME,
+	GAME_PORT_ENV,
+	MC_SERVICE_NAME,
+	PATCH_FILE_CONTAINER_PATH,
+	PATCH_FILE_NAME,
+	SERVER_LABEL,
+} from "../lib/const.js";
 import { emptyToUndefined } from "../lib/validation.js";
-import { backupDriftSchema, backupStateSchema } from "./backup.model.js";
-import { composeConfigSchema, composeServiceSchema } from "./compose.model.js";
+import {
+	type BackupState,
+	backupDriftSchema,
+	backupStateSchema,
+} from "./backup.model.js";
+import {
+	type ComposeService,
+	composeConfigSchema,
+	composeServiceSchema,
+} from "./compose.model.js";
 
 /**
  * Represents the result of executing a command on a Minecraft server.
@@ -273,6 +291,508 @@ export const serverConfigPatchSchema = z
 		maxLogFiles: z.number().int().min(1).optional(),
 	})
 	.strict();
+
+/**
+ * How a single config field is read from and written to an env var.
+ * Reading is always lenient: a hand-edited value that doesn't parse
+ * reads as "unset" rather than breaking the whole config screen.
+ */
+type EnvCodec<T> = {
+	readonly read: (raw: string | undefined) => T | undefined;
+	readonly write: (value: T) => string;
+};
+
+/** "true"/"false" (any case) → boolean; anything else → undefined. */
+const booleanEnvVar = z
+	.stringbool({ truthy: ["true"], falsy: ["false"] })
+	.optional()
+	.catch(undefined);
+
+/** A positive integer; anything else → undefined. */
+const intEnvVar = z.coerce.number().int().min(1).optional().catch(undefined);
+
+/**
+ * The container port the game listens on (SERVER_PORT). Defaults to
+ * 25565, itzg's default, when the variable isn't set or doesn't parse.
+ */
+const gamePortEnvVar = z.coerce
+	.number()
+	.int()
+	.min(1)
+	.max(65535)
+	.catch(25565)
+	.default(25565);
+
+const stringEnv: EnvCodec<string> = {
+	read: (raw) => raw,
+	write: (value) => value,
+};
+
+const booleanEnv: EnvCodec<boolean> = {
+	read: (raw) => booleanEnvVar.parse(raw),
+	write: (value) => String(value),
+};
+
+const intEnv: EnvCodec<number> = {
+	read: (raw) => intEnvVar.parse(raw),
+	write: (value) => String(value),
+};
+
+/**
+ * The 1:1 mapping between config fields and itzg env vars. Both reading
+ * ({@link ManagedServer.config}) and writing
+ * ({@link ManagedServer.applyConfigPatch}) are driven by this table, so
+ * a new simple setting is one entry here plus its `ServerConfig` and
+ * patch-schema declarations. Fields with cross-cutting storage
+ * (modpackVersion, flags, port, imageTag) are handled separately.
+ */
+const ENV_FIELDS = {
+	motd: ["MOTD", stringEnv],
+	difficulty: ["DIFFICULTY", stringEnv],
+	hardcore: ["HARDCORE", booleanEnv],
+	mode: ["MODE", stringEnv],
+	level: ["LEVEL", stringEnv],
+	enableWhitelist: ["ENABLE_WHITELIST", booleanEnv],
+	initialEnabledPacks: ["INITIAL_ENABLED_PACKS", stringEnv],
+	seed: ["SEED", stringEnv],
+	memory: ["MEMORY", stringEnv],
+	version: ["VERSION", stringEnv],
+	maxLogFiles: ["ROLLING_LOG_MAX_FILES", intEnv],
+} as const;
+
+type EnvFields = typeof ENV_FIELDS;
+
+/** The config values backed 1:1 by env vars, with proper per-field types. */
+type EnvFieldValues = {
+	[K in keyof EnvFields]: EnvFields[K][1] extends EnvCodec<infer T>
+		? T | undefined
+		: never;
+};
+
+/**
+ * Matches a compose port mapping, capturing the optional host port and
+ * the container port: `"25565"`, `"25565:25565"`, `"24454:24454/udp"`.
+ *
+ * Deliberately does not support host-IP-prefixed (`"127.0.0.1:25565:25565"`)
+ * or IPv6 mappings: kith only writes plain port mappings itself, and
+ * servers are expected to be created and managed through kith. A
+ * hand-edited mapping in one of those forms is treated as an unmanaged
+ * "other" port — it survives rewrites untouched, but the game port field
+ * won't recognize it.
+ */
+const portMappingPattern = /^(?:(\d+):)?(\d+)(?:\/(?:tcp|udp))?$/;
+
+/** Extracts the container port from a compose port mapping. */
+function containerPortOf(mapping: string): number | undefined {
+	const match = portMappingPattern.exec(mapping);
+	if (!match?.[2]) {
+		return undefined;
+	}
+	const parsed = Number.parseInt(match[2], 10);
+	return Number.isNaN(parsed) ? undefined : parsed;
+}
+
+/**
+ * Extracts the host port from a compose port mapping. A mapping with no
+ * host part (`"25565"`) counts as its container port — conservative,
+ * since Docker would publish it on an ephemeral port.
+ */
+function hostPortOf(mapping: string): number | undefined {
+	const match = portMappingPattern.exec(mapping);
+	const host = match?.[1] ?? match?.[2];
+	if (!host) {
+		return undefined;
+	}
+	const parsed = Number.parseInt(host, 10);
+	return Number.isNaN(parsed) ? undefined : parsed;
+}
+
+/**
+ * Finds the host port publishing the given container port, e.g. the
+ * `"25565:25565"` in `["25565:25565", "24454:24454/udp"]`.
+ */
+function findHostPort(
+	ports: string[] | undefined,
+	containerPort: number,
+): number | undefined {
+	const mapping = ports?.find(
+		(port) => containerPortOf(port) === containerPort,
+	);
+	return mapping ? hostPortOf(mapping) : undefined;
+}
+
+/**
+ * Extracts the tag from an image reference, e.g. `"java21"` from
+ * `"itzg/minecraft-server:java21"`. A digest or missing tag yields
+ * `undefined`.
+ */
+function imageTagOf(image: string): string | undefined {
+	const name = image.split("@")[0] ?? image;
+	const separator = name.lastIndexOf(":");
+
+	// No colon, or the colon belongs to a registry port ("host:5000/img").
+	if (separator === -1 || separator < name.lastIndexOf("/")) {
+		return undefined;
+	}
+
+	return name.slice(separator + 1);
+}
+
+/** Replaces the tag of an image reference, keeping name and registry. */
+function withImageTag(image: string, tag: string): string {
+	const current = imageTagOf(image);
+	return current
+		? `${image.slice(0, image.lastIndexOf(":"))}:${tag}`
+		: `${image}:${tag}`;
+}
+
+/** Drops entries whose value is undefined ("unset") from an env map. */
+function definedEnv(
+	env: Record<string, string | undefined>,
+): Record<string, string> {
+	const out: Record<string, string> = {};
+	for (const [key, value] of Object.entries(env)) {
+		if (value !== undefined) {
+			out[key] = value;
+		}
+	}
+	return out;
+}
+
+/** Arguments for {@link ManagedServer.create}. */
+export type NewManagedServerArgs = {
+	/** The server's id — its directory name under the servers directory. */
+	id: string;
+	/** The display label, stored in the compose server label. */
+	label: string;
+	/** Full image reference, ie. "itzg/minecraft-server:java21". */
+	image: string;
+	/**
+	 * The game port. Published on the host with host and container ports
+	 * matching, and recorded in SERVER_PORT.
+	 */
+	port: number;
+	/**
+	 * itzg environment layered over the base env (TYPE, VERSION, MEMORY,
+	 * MODRINTH_*, …). Undefined values are omitted — itzg's defaults
+	 * apply for those.
+	 */
+	environment?: Record<string, string | undefined>;
+};
+
+/**
+ * A kith-managed Minecraft server as an object: the single place that
+ * knows how the server's docker-compose.yml maps onto the things
+ * developers care about — label, game port, image tag, backup state,
+ * and the editable {@link ServerConfig}.
+ *
+ * Create one from compose data ({@link fromCompose}) or from scratch
+ * ({@link create}), read the derived views, mutate with
+ * {@link applyConfigPatch} / {@link setBackups}, and serialize back with
+ * {@link toCompose}. Data the model doesn't understand (extra services,
+ * env vars, labels, port mappings, service options) survives the
+ * round-trip untouched.
+ */
+export class ManagedServer {
+	private constructor(
+		/** The server's id — its directory name under the servers directory. */
+		readonly id: string,
+		private readonly compose: KithComposeConfig,
+	) {}
+
+	/**
+	 * Wraps a server's compose data, validating it has the shape kith
+	 * expects (an `mc` service carrying the server label).
+	 *
+	 * @throws ZodError when the compose data isn't a kith-managed server.
+	 */
+	static fromCompose(id: string, compose: unknown): ManagedServer {
+		return new ManagedServer(id, managedComposeConfigSchema.parse(compose));
+	}
+
+	/**
+	 * Builds a brand-new server's compose data: the base service options
+	 * kith always sets (restart policy, log rotation, data and patch-file
+	 * mounts, EULA, …) plus the given image, game port and itzg env.
+	 */
+	static create(args: NewManagedServerArgs): ManagedServer {
+		const { id, label, image, port, environment } = args;
+		return new ManagedServer(id, {
+			services: {
+				[MC_SERVICE_NAME]: {
+					image,
+					pull_policy: "daily",
+					tty: true,
+					stdin_open: true,
+					stop_grace_period: "1m",
+					restart: "unless-stopped",
+					logging: {
+						driver: "json-file",
+						options: {
+							"max-size": "10m",
+							"max-file": "5",
+						},
+					},
+					labels: {
+						[SERVER_LABEL]: label,
+					},
+					ports: [`${port}:${port}`],
+					environment: definedEnv({
+						EULA: "TRUE",
+						USE_AIKAR_FLAGS: "TRUE",
+						PATCH_DEFINITIONS: PATCH_FILE_CONTAINER_PATH,
+						...(config.uid >= 0 && config.gid >= 0
+							? { UID: `${config.uid}`, GID: `${config.gid}` }
+							: {}),
+						...environment,
+						[GAME_PORT_ENV]: `${port}`,
+					}),
+					volumes: [
+						`./${DATA_DIR_NAME}:/data`,
+						`./${PATCH_FILE_NAME}:${PATCH_FILE_CONTAINER_PATH}:ro`,
+					],
+				},
+			},
+		});
+	}
+
+	/**
+	 * Serializes back to compose data for saving. Returns a deep copy —
+	 * mutating the result doesn't affect the server.
+	 */
+	toCompose(): KithComposeConfig {
+		return structuredClone(this.compose);
+	}
+
+	/** The `mc` service — guaranteed present by the managed schema. */
+	private get mc() {
+		return this.compose.services[MC_SERVICE_NAME];
+	}
+
+	/** The mc service's env vars, empty when the service declares none. */
+	private get env(): Record<string, string> {
+		return this.mc.environment ?? {};
+	}
+
+	/** The server's display label. */
+	get label(): string {
+		return this.mc.labels[SERVER_LABEL];
+	}
+
+	/** TYPE — the server type (VANILLA, MODRINTH, …). */
+	get type(): string | undefined {
+		return this.env.TYPE;
+	}
+
+	/** MODRINTH_MODPACK — the modpack slug/id. */
+	get modpack(): string | undefined {
+		return this.env.MODRINTH_MODPACK;
+	}
+
+	/** The tag of the itzg/minecraft-server image, ie. the Java version. */
+	get imageTag(): string | undefined {
+		return imageTagOf(this.mc.image);
+	}
+
+	/**
+	 * The container port the Minecraft server listens on, read from the
+	 * SERVER_PORT env var the compose file is created with. Defaults to
+	 * 25565, itzg's default, when the variable isn't set.
+	 */
+	get gameContainerPort(): number {
+		return gamePortEnvVar.parse(this.env[GAME_PORT_ENV]);
+	}
+
+	/**
+	 * The host port publishing the server's game port. Undefined when the
+	 * game port isn't published.
+	 */
+	get port(): number | undefined {
+		return findHostPort(this.mc.ports, this.gameContainerPort);
+	}
+
+	/** Every host port this server publishes, game port included. */
+	get hostPorts(): number[] {
+		return (this.mc.ports ?? [])
+			.map(hostPortOf)
+			.filter((port): port is number => port !== undefined);
+	}
+
+	/**
+	 * The server's backup state: the sidecar's presence wins, otherwise
+	 * the recorded opt-out label, otherwise the server simply predates
+	 * backups.
+	 */
+	get backupsState(): BackupState {
+		if (this.compose.services[BACKUP_SERVICE_NAME]) {
+			return "enabled";
+		}
+		if (this.mc.labels[BACKUPS_ENABLED_LABEL] === "false") {
+			return "opted_out";
+		}
+		return "not_set_up";
+	}
+
+	/**
+	 * The backup sidecar service, when present. A live reference into the
+	 * compose data — read it, but don't mutate it.
+	 */
+	get backupSidecar(): ComposeService | undefined {
+		return this.compose.services[BACKUP_SERVICE_NAME];
+	}
+
+	/**
+	 * The editable configuration, read out of the compose data.
+	 * `undefined` means "not set in the compose file" — itzg's own
+	 * defaults keep applying for unset fields.
+	 */
+	get config(): ServerConfig {
+		const env = this.env;
+		const type = env.TYPE;
+		return {
+			...this.readEnvFields(),
+			// Creation omits MODRINTH_MODPACK_VERSION for "latest".
+			modpackVersion:
+				type === "MODRINTH"
+					? (env.MODRINTH_MODPACK_VERSION ?? "latest")
+					: undefined,
+			flags: this.flags,
+			port: this.port,
+			imageTag: this.imageTag,
+			type,
+			modpack: env.MODRINTH_MODPACK,
+		};
+	}
+
+	/**
+	 * Applies a config patch to the compose data. Only the settings
+	 * present in the patch are touched — unrelated env vars (EULA, TYPE,
+	 * modpack settings, …), labels, extra port mappings (voice chat, web
+	 * maps) and other services are preserved. A patch value of
+	 * `undefined` clears the setting, removing its env var so itzg's
+	 * default applies again.
+	 *
+	 * The patch must already be validated against serverConfigPatchSchema.
+	 */
+	applyConfigPatch(patch: ServerConfigPatch): void {
+		const environment = { ...this.mc.environment };
+		const set = (key: string, value: string | undefined) => {
+			if (value === undefined) {
+				delete environment[key];
+			} else {
+				environment[key] = value;
+			}
+		};
+
+		// The 1:1 env-backed fields, driven by the mapping table.
+		for (const [key, [name, codec]] of Object.entries(ENV_FIELDS)) {
+			if (!(key in patch)) {
+				continue;
+			}
+			const value = patch[key as keyof ServerConfigPatch];
+			if (value === undefined) {
+				delete environment[name];
+			} else {
+				// The patch was validated against serverConfigPatchSchema, so
+				// the value always matches the field's codec.
+				environment[name] = codec.write(value as never);
+			}
+		}
+
+		if ("modpackVersion" in patch) {
+			// Mirrors creation: "latest" (or clearing) tracks the newest pack
+			// release via VERSION=latest; a pinned version drops VERSION.
+			if (
+				patch.modpackVersion === undefined ||
+				patch.modpackVersion === "latest"
+			) {
+				set("MODRINTH_MODPACK_VERSION", undefined);
+				set("VERSION", "latest");
+			} else {
+				set("MODRINTH_MODPACK_VERSION", patch.modpackVersion);
+				set("VERSION", undefined);
+			}
+		}
+
+		if ("flags" in patch) {
+			set("USE_AIKAR_FLAGS", patch.flags === "aikar" ? "TRUE" : undefined);
+			set("USE_MEOWICE_FLAGS", patch.flags === "meowice" ? "TRUE" : undefined);
+		}
+
+		let ports = this.mc.ports;
+		if ("port" in patch) {
+			// Replace the mapping for the game port, keeping every other
+			// published port (voice chat, web maps) as-is. The game port's host
+			// and container ports always match (SERVER_PORT), so a port change
+			// rewrites both sides of the mapping.
+			const containerPort = this.gameContainerPort;
+			const others = (this.mc.ports ?? []).filter(
+				(port) => containerPortOf(port) !== containerPort,
+			);
+
+			if (patch.port === undefined) {
+				ports = others;
+				set(GAME_PORT_ENV, undefined);
+			} else {
+				ports = [`${patch.port}:${patch.port}`, ...others];
+				set(GAME_PORT_ENV, String(patch.port));
+			}
+		}
+
+		let image = this.mc.image;
+		if ("imageTag" in patch && patch.imageTag !== undefined) {
+			image = withImageTag(image, patch.imageTag);
+		}
+
+		// The spread preserves every unmanaged property of the service
+		// (labels and all); only the patched slices are replaced.
+		this.compose.services[MC_SERVICE_NAME] = {
+			...this.mc,
+			image,
+			ports,
+			environment,
+		};
+	}
+
+	/**
+	 * Adds or removes the backup sidecar, recording the choice in a label
+	 * so an opted-out server isn't nagged to set backups up. Removing the
+	 * sidecar keeps the restic repository itself — re-enabling picks up
+	 * where backups left off.
+	 */
+	setBackups(sidecar: ComposeService | undefined): void {
+		if (sidecar) {
+			this.compose.services[BACKUP_SERVICE_NAME] = sidecar;
+		} else {
+			delete this.compose.services[BACKUP_SERVICE_NAME];
+		}
+		this.mc.labels = {
+			...this.mc.labels,
+			[BACKUPS_ENABLED_LABEL]: String(sidecar !== undefined),
+		};
+	}
+
+	/** The JVM flags preset, derived from the flag env vars. */
+	private get flags(): ServerFlags {
+		if (booleanEnvVar.parse(this.env.USE_MEOWICE_FLAGS) === true) {
+			return "meowice";
+		}
+		if (booleanEnvVar.parse(this.env.USE_AIKAR_FLAGS) === true) {
+			return "aikar";
+		}
+		return "none";
+	}
+
+	/** Reads every 1:1 env-backed config field via the mapping table. */
+	private readEnvFields(): EnvFieldValues {
+		const env = this.env;
+		const values: Record<string, unknown> = {};
+		for (const [key, [name, codec]] of Object.entries(ENV_FIELDS)) {
+			values[key] = codec.read(env[name]);
+		}
+		return values as EnvFieldValues;
+	}
+}
 
 export class UnexpectedServerResponseError extends Error {
 	readonly code = "UNEXPECTED_SERVER_RESPONSE";
