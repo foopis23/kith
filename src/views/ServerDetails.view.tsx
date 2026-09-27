@@ -39,8 +39,11 @@ export function ServerDetails() {
 		mutationFn: (mode: ServerService.DeleteServerMode) =>
 			ServerService.deleteServer(serverId, mode),
 		onSuccess: () => {
-			// The server is gone — drop every cached query about it and
-			// refresh the list before landing back on it.
+			// The server is gone — remove its cached queries outright so
+			// nothing refetches against the deleted directory (invalidate
+			// would refetch the still-mounted detail and status queries),
+			// then refresh the list before landing back on it.
+			queryClient.removeQueries({ queryKey: ["servers", serverId] });
 			queryClient.invalidateQueries({ queryKey: ["servers"] });
 			navigate("/");
 		},
