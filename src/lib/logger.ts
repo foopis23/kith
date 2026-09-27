@@ -6,9 +6,9 @@ import { makeDirSync } from "./fs.js";
 let LOG_FILE: string;
 try {
 	makeDirSync(config.logDir);
-	LOG_FILE = path.join(config.logDir, "app.log");
+	LOG_FILE = path.join(config.logDir, "kith.log");
 } catch (err) {
-	const fallback = path.resolve("data", "logs", "app.log");
+	const fallback = path.resolve("data", "logs", "kith.log");
 	try {
 		makeDirSync(path.dirname(fallback));
 	} catch (innerErr) {
@@ -17,7 +17,7 @@ try {
 			(err as NodeJS.ErrnoException).code;
 		throw new Error(
 			`Cannot create a log directory — tried "${config.logDir}" and fallback "./data/logs". ` +
-				`Last error: ${code}. Fix permissions on one of them, or set KITH_LOG_DIR to a writable path.`,
+			`Last error: ${code}. Fix permissions on one of them, or set KITH_LOG_DIR to a writable path.`,
 			{ cause: innerErr },
 		);
 	}
@@ -26,6 +26,19 @@ try {
 	);
 	LOG_FILE = fallback;
 }
+
+const transport = pino.transport({
+	target: 'pino-roll',
+	options: {
+		file: LOG_FILE,
+		dateFormat: 'yyyy.MM.dd',
+		frequency: 'daily',
+		limit: {
+			count: 90,
+			removeOtherLogFiles: true
+		}
+	}
+})
 
 export const logger = pino(
 	{
@@ -39,5 +52,5 @@ export const logger = pino(
 			error: pino.stdSerializers.err,
 		},
 	},
-	pino.destination(LOG_FILE),
+	transport,
 );
