@@ -783,6 +783,15 @@ export class ManagedServer {
 				ports = others;
 				set(GAME_PORT_ENV, undefined);
 			} else {
+				// Refuse to steal one of the server's own published ports
+				// (voice chat, web maps): two mappings binding the same host
+				// port produce a compose file that won't start.
+				const collision = others.find(
+					(mapping) => hostPortOf(mapping) === patch.port,
+				);
+				if (collision) {
+					throw new GamePortConflictError(this.id, patch.port, collision);
+				}
 				ports = [`${patch.port}:${patch.port}`, ...others];
 				set(GAME_PORT_ENV, String(patch.port));
 			}
@@ -853,6 +862,22 @@ export class ManagedServer {
 			values[key] = codec.read(env[name]);
 		}
 		return values as EnvFieldValues;
+	}
+}
+
+export class GamePortConflictError extends Error {
+	readonly code = "GAME_PORT_CONFLICT";
+	constructor(
+		readonly serverId: string,
+		readonly port: number,
+		readonly mapping: string,
+		errorOptions?: ErrorOptions,
+	) {
+		super(
+			`Cannot publish the game port of server "${serverId}" on host port ${port}: the mapping "${mapping}" already binds it`,
+			errorOptions,
+		);
+		this.name = "GamePortConflictError";
 	}
 }
 

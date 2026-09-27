@@ -4,7 +4,10 @@
  * data kith doesn't manage. Pure data in, pure data out — no docker.
  */
 import { describe, expect, test } from "bun:test";
-import { ManagedServer } from "../src/models/server.model.js";
+import {
+	GamePortConflictError,
+	ManagedServer,
+} from "../src/models/server.model.js";
 
 /**
  * A representative compose doc as kith writes it, plus the kinds of
@@ -334,6 +337,29 @@ describe("ManagedServer.applyConfigPatch", () => {
 		expect(mc.ports).toEqual(["25570:25570", "24454:24454/udp"]);
 		expect(mc.environment?.SERVER_PORT).toBe("25570");
 		expect(server.port).toBe(25570);
+	});
+
+	test("refuses to steal one of the server's own published ports", () => {
+		const server = ManagedServer.fromCompose("abc", vanillaCompose);
+		// 24454 is the voice chat mapping in the fixture.
+		expect(() => server.applyConfigPatch({ port: 24454 })).toThrow(
+			GamePortConflictError,
+		);
+		// The failed patch leaves the compose data untouched.
+		expect(server.toCompose().services.mc.ports).toEqual([
+			"25565:25565",
+			"24454:24454/udp",
+		]);
+		expect(server.port).toBe(25565);
+	});
+
+	test("re-setting the current game port is not a conflict", () => {
+		const server = ManagedServer.fromCompose("abc", vanillaCompose);
+		server.applyConfigPatch({ port: 25565 });
+		expect(server.toCompose().services.mc.ports).toEqual([
+			"25565:25565",
+			"24454:24454/udp",
+		]);
 	});
 
 	test("unpublishes the game port when the port is cleared", () => {
