@@ -3,6 +3,7 @@ import os from "node:os";
 import path from "node:path";
 import z from "zod";
 import pkg from "../../package.json" with { type: "json" };
+import { PortRangeStringSchema } from "./validation.js";
 
 /**
  * Based on XDG Base Directory Specification.
@@ -30,7 +31,7 @@ const env = z
 			.default(path.join(xdg.XDG_STATE_HOME, "kith/logs")),
 		KITH_CACHE_DIR: z.string().default(path.join(xdg.XDG_CACHE_HOME, "kith")),
 		KITH_TMP_FILE_DIR: z.string().default(path.join(os.tmpdir(), "kith")),
-
+		KITH_PORT_RANGE: PortRangeStringSchema.prefault("25565-25665"),
 		KITH_BASE_BACKUP_DEST: z.string().optional(),
 		KITH_BACKUP_PASSWORD: z.string().optional(),
 		KITH_BACKUP_INTERVAL: z.string().default("24h"),
@@ -53,7 +54,9 @@ const env = z
 	.parse(process.env);
 
 /**
- * Application Level Read Only Config Object
+ * Application Level Read Only Config Object.
+ *
+ * This object just acts as a centralized, read-only source of configuration values for the application.
  */
 export const config = {
 	serversDir: env.KITH_SERVERS_DIR,
@@ -69,6 +72,7 @@ export const config = {
 	gid: env.KITH_GID,
 	secretFileMode: env.KITH_SECRET_FILE_MODE,
 	version: loadVersionNumber(),
+	portRange: env.KITH_PORT_RANGE,
 } as const;
 
 /**

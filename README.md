@@ -22,12 +22,14 @@ The itzg/minecraft-server image already does almost everything a Minecraft serve
 
 ## Quick start
 
-Requirements are [Bun](https://bun.com) 1.4+ and [Docker](https://www.docker.com/) with the Compose plugin.
+The only requirement is [Docker](https://www.docker.com/) with the Compose plugin. Install the prebuilt binary (Linux and macOS, x64 and arm64):
 
 ```bash
-bun install -g @foopis23/kith --registry https://npm.pkg.github.com
+curl -fsSL https://raw.githubusercontent.com/foopis23/kith/main/scripts/install.sh | sh
 kith
 ```
+
+The installer downloads the latest release, verifies its checksum, and puts `kith` on your PATH. Prefer a [Bun](https://bun.com) package install? See [Installation](https://foopis23.github.io/kith/installation).
 
 Out of the box kith is a per-user install. Everything lives under your home directory following the XDG Base Directory Specification, with nothing to configure. From the main screen, create a server, pick a modpack or a vanilla version, and start it.
 
