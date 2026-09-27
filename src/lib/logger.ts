@@ -1,14 +1,19 @@
 import path from "node:path";
 import pino from "pino";
+// Imported directly (not via pino.transport) so the bundler includes it:
+// pino.transport resolves `target: "pino-roll"` by name at runtime inside a
+// worker thread, which fails in `bun build --compile` binaries where
+// node_modules doesn't exist. Used as a plain destination stream instead.
+import pinoRoll from "pino-roll";
 import { config } from "./config.js";
 import { makeDirSync } from "./fs.js";
 
 let LOG_FILE: string;
 try {
 	makeDirSync(config.logDir);
-	LOG_FILE = path.join(config.logDir, "app.log");
+	LOG_FILE = path.join(config.logDir, "kith.log");
 } catch (err) {
-	const fallback = path.resolve("data", "logs", "app.log");
+	const fallback = path.resolve("data", "logs", "kith.log");
 	try {
 		makeDirSync(path.dirname(fallback));
 	} catch (innerErr) {
@@ -27,6 +32,16 @@ try {
 	LOG_FILE = fallback;
 }
 
+const destination = await pinoRoll({
+	file: LOG_FILE,
+	dateFormat: "yyyy.MM.dd",
+	frequency: "daily",
+	limit: {
+		count: 90,
+		removeOtherLogFiles: true,
+	},
+});
+
 export const logger = pino(
 	{
 		level: process.env.DEBUG ? "debug" : "info",
@@ -39,5 +54,5 @@ export const logger = pino(
 			error: pino.stdSerializers.err,
 		},
 	},
-	pino.destination(LOG_FILE),
+	destination,
 );
