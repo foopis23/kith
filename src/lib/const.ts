@@ -27,3 +27,11 @@ export const GAME_PORT_ENV = "SERVER_PORT";
  * "true" means the backup sidecar was added by kith.
  */
 export const BACKUPS_ENABLED_LABEL = "kith.backups.enabled";
+
+/**
+ * Directory-name prefix marking a server as archived: the data stays on
+ * disk, but kith no longer lists the server or counts its ports as used.
+ * Leading dot hides the directory from a plain `ls` — archived servers
+ * are off the roster — while the tag keeps `ls -a` self-explanatory.
+ */
+export const ARCHIVED_SERVER_PREFIX = ".archived.";

@@ -1121,6 +1121,46 @@ export class InvalidServerConfigPatchError extends Error {
 	}
 }
 
+export class FailedToDeleteServerError extends Error {
+	readonly code = "FAILED_TO_DELETE_SERVER";
+	constructor(
+		readonly serverId: string,
+		errorOptions?: ErrorOptions,
+	) {
+		super(`Failed to delete server "${serverId}"`, errorOptions);
+		this.name = "FailedToDeleteServerError";
+	}
+}
+
+export class ServerStackNotDownError extends Error {
+	readonly code = "SERVER_STACK_NOT_DOWN";
+	constructor(
+		readonly serverId: string,
+		errorOptions?: ErrorOptions,
+	) {
+		super(
+			`Cannot delete server "${serverId}" — could not confirm its containers are stopped. Check that docker is running, stop the server, and try again.`,
+			errorOptions,
+		);
+		this.name = "ServerStackNotDownError";
+	}
+}
+
+export class BackupRepoInsideServerDirError extends Error {
+	readonly code = "BACKUP_REPO_INSIDE_SERVER_DIR";
+	constructor(
+		readonly serverId: string,
+		readonly repoPath: string,
+		errorOptions?: ErrorOptions,
+	) {
+		super(
+			`Cannot delete server "${serverId}" — its backup repository (${repoPath}) is inside the server directory and would be erased with it. Point KITH_BASE_BACKUP_DEST at a location outside the server directory and try again.`,
+			errorOptions,
+		);
+		this.name = "BackupRepoInsideServerDirError";
+	}
+}
+
 export class FailedToUpdateServerConfigError extends Error {
 	readonly code = "FAILED_TO_UPDATE_SERVER_CONFIG";
 	constructor(

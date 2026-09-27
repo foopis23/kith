@@ -4,8 +4,9 @@ import path from "node:path";
 import type { Readable } from "node:stream";
 import YAML from "yaml";
 import type z from "zod";
-import { config, serverPath } from "../lib/config.js";
+import { config, isRemoteBackupDest, serverPath } from "../lib/config.js";
 import {
+	ARCHIVED_SERVER_PREFIX,
 	DATA_DIR_NAME,
 	MC_SERVICE_NAME,
 	PATCH_FILE_CONTAINER_PATH,
@@ -24,11 +25,13 @@ import type {
 	ServerStatus,
 } from "../models/server.model.js";
 import {
+	BackupRepoInsideServerDirError,
 	CantAccessServerComposeFile,
 	CantAccessServersDirectoryError,
 	CapturingLogTrailFailedError,
 	type CommandResult,
 	FailedToCreateServerError,
+	FailedToDeleteServerError,
 	FailedToFetchServerConfigError,
 	FailedToFetchServerInfoError,
 	FailedToSendCommandError,
@@ -44,6 +47,7 @@ import {
 	type ServerConfigPatch,
 	ServerDirectoryDoesNotContainComposeFileError,
 	type ServerInfo,
+	ServerStackNotDownError,
 	ServersDirectoryDoesNotExistError,
 	serverConfigPatchSchema,
 	UnexpectedKithComposeConfigError,
@@ -83,6 +87,10 @@ export async function getServers(): Promise<Server[]> {
 		.filter((file) => file.isDirectory())
 		.map((d) => d.name)
 		.filter((name) => !name.startsWith("."))
+		// Redundant with the dot-filter above (the prefix starts with
+		// ".") — kept as defense-in-depth so archived servers stay off
+		// the roster even if the hidden-file rule ever changes.
+		.filter((name) => !name.startsWith(ARCHIVED_SERVER_PREFIX))
 		.filter((name) => /^[\w.-]+$/.test(name));
 
 	return (
@@ -383,32 +391,39 @@ export async function updateServerConfig(
 	// Serialized per server: an update is a read-modify-write of the
 	// compose file, and the config screen fires one mutation per edit,
 	// so overlapping updates would silently drop each other's changes.
-	return enqueueConfigUpdate(serverId, () =>
+	return enqueueServerOp(serverId, () =>
 		applyServerConfigUpdate(serverId, validated.data),
 	);
 }
 
 /**
- * Per-server tails of the config update queue, see {@link enqueueConfigUpdate}.
+ * Per-server tails of the lifecycle queue, see {@link enqueueServerOp}.
  */
-const configUpdateQueues = new Map<string, Promise<unknown>>();
+const serverOpQueues = new Map<string, Promise<unknown>>();
 
 /**
- * Runs a config update after every previously queued update for the same
- * server has settled. Updates for different servers still run in parallel.
- * The queue entry is removed once it drains, so the map can't grow without
- * bound.
+ * Runs an operation after every previously queued operation for the
+ * same server has settled. Operations for different servers still run
+ * in parallel. The queue entry is removed once it drains, so the map
+ * can't grow without bound.
+ *
+ * Everything that mutates a server's compose file, directory, or
+ * container stack goes through this queue. Config updates are
+ * read-modify-writes that would silently drop each other's changes,
+ * and a delete must never interleave with a start: its down/ps could
+ * observe the stack before the start's containers exist and remove
+ * the directory out from under the starting containers.
  */
-function enqueueConfigUpdate<T>(
+function enqueueServerOp<T>(
 	serverId: string,
-	update: () => Promise<T>,
+	op: () => Promise<T>,
 ): Promise<T> {
-	const previous = configUpdateQueues.get(serverId) ?? Promise.resolve();
-	const run = previous.catch(() => {}).then(update);
-	configUpdateQueues.set(serverId, run);
+	const previous = serverOpQueues.get(serverId) ?? Promise.resolve();
+	const run = previous.catch(() => {}).then(op);
+	serverOpQueues.set(serverId, run);
 	const cleanup = () => {
-		if (configUpdateQueues.get(serverId) === run) {
-			configUpdateQueues.delete(serverId);
+		if (serverOpQueues.get(serverId) === run) {
+			serverOpQueues.delete(serverId);
 		}
 	};
 	run.then(cleanup, cleanup);
@@ -417,7 +432,7 @@ function enqueueConfigUpdate<T>(
 
 /**
  * Applies a validated config patch, see {@link updateServerConfig}.
- * Must only be called through the per-server update queue.
+ * Must only be called through the per-server lifecycle queue.
  */
 async function applyServerConfigUpdate(
 	serverId: string,
@@ -481,14 +496,12 @@ export async function setServerBackupsEnabled(
 	enabled: boolean,
 ): Promise<void> {
 	// Same queue as config updates: both rewrite the compose file.
-	return enqueueConfigUpdate(serverId, () =>
-		applyBackupsUpdate(serverId, enabled),
-	);
+	return enqueueServerOp(serverId, () => applyBackupsUpdate(serverId, enabled));
 }
 
 /**
  * Applies a backups enable/disable, see {@link setServerBackupsEnabled}.
- * Must only be called through the per-server update queue.
+ * Must only be called through the per-server lifecycle queue.
  */
 async function applyBackupsUpdate(
 	serverId: string,
@@ -534,7 +547,7 @@ export async function updateServerBackupsToGlobal(
 	serverId: string,
 ): Promise<void> {
 	// Same queue as config updates: both rewrite the compose file.
-	return enqueueConfigUpdate(serverId, async () => {
+	return enqueueServerOp(serverId, async () => {
 		const server = await loadServer(serverId);
 		const oldSidecar = server.backupSidecar;
 		if (!oldSidecar) {
@@ -563,12 +576,137 @@ export async function updateServerBackupsToGlobal(
 }
 
 /**
+ * How a server's directory is treated when the server is deleted:
+ * "archive" renames it to `.archived.<id>` (data kept on disk, server
+ * removed from kith); "destroy" erases it entirely. Restic backup
+ * repositories are never touched — a destroy whose local backup
+ * destination nests the repository inside the server directory is
+ * refused outright (see {@link BackupRepoInsideServerDirError}).
+ */
+export type DeleteServerMode = "archive" | "destroy";
+
+/**
+ * Deletes a server from kith. The server is stopped first, then its
+ * directory is either archived or erased depending on the mode.
+ * Archiving is recoverable by hand (rename the directory back);
+ * destroying is not.
+ *
+ * @param serverId The ID of the server to delete.
+ * @param mode Whether to keep the data on disk (archived) or erase it.
+ * @throws ServerStackNotDownError when the stack can't be confirmed
+ * down — the directory is left untouched in that case.
+ * @throws BackupRepoInsideServerDirError when a destroy would erase a
+ * backup repository nested inside the server directory — nothing is
+ * touched in that case either.
+ */
+export async function deleteServer(
+	serverId: string,
+	mode: DeleteServerMode,
+): Promise<void> {
+	// Same queue as config updates and starts: a delete must never
+	// interleave with a compose file write or a stack coming up.
+	return enqueueServerOp(serverId, () => applyServerDelete(serverId, mode));
+}
+
+/**
+ * Brings the stack down and archives or erases the server's directory,
+ * see {@link deleteServer}. Must only be called through the per-server
+ * lifecycle queue.
+ */
+async function applyServerDelete(
+	serverId: string,
+	mode: DeleteServerMode,
+): Promise<void> {
+	const dir = serverPath(serverId);
+
+	// A local backup destination nested inside the server directory
+	// puts the restic repository in the path of the recursive removal,
+	// so a destroy would erase the very backups the confirmation
+	// promises to keep. Refuse before anything is touched. (Archive
+	// only renames the directory — the repository moves with it but
+	// stays on disk.)
+	const dest = config.baseBackupDest;
+	if (mode === "destroy" && dest && !isRemoteBackupDest(dest)) {
+		const dirPath = path.resolve(dir);
+		const repoPath = path.resolve(dest, serverId);
+		if (repoPath === dirPath || repoPath.startsWith(`${dirPath}${path.sep}`)) {
+			const newErr = new BackupRepoInsideServerDirError(serverId, repoPath);
+			logger.error({ error: newErr }, newErr.message);
+			throw newErr;
+		}
+	}
+
+	// A running stack can't survive its directory being renamed or
+	// deleted out from under it, so bring it down first.
+	await ComposeService.down({
+		cwd: dir,
+		commandOptions: ["--remove-orphans"],
+	});
+
+	// The compose wrapper swallows docker failures (logged there), so a
+	// resolved down is no proof the stack is actually down — confirm it.
+	// A failed ps means docker is unreachable or the compose file is
+	// broken; a remaining service means down didn't do its job. Either
+	// way, deleting now could rip the data dir out from under live
+	// containers, so refuse and leave the directory untouched.
+	const ps = await ComposeService.ps({ cwd: dir });
+	if (!ps || ps.data.services.length > 0) {
+		const newErr = new ServerStackNotDownError(serverId);
+		logger.error({ error: newErr }, newErr.message);
+		throw newErr;
+	}
+
+	try {
+		if (mode === "archive") {
+			await fs.rename(dir, await availableArchivedPath(serverId));
+		} else {
+			await fs.rm(dir, { recursive: true, force: true });
+		}
+	} catch (err) {
+		const newErr = new FailedToDeleteServerError(serverId, { cause: err });
+		logger.error({ error: newErr }, newErr.message);
+		throw newErr;
+	}
+}
+
+/**
+ * Finds a free `.archived.<id>` directory name, suffixing `-2`, `-3`…
+ * when a previous archive of the same server is still around.
+ */
+async function availableArchivedPath(serverId: string): Promise<string> {
+	for (let n = 1; ; n++) {
+		const name =
+			n === 1
+				? `${ARCHIVED_SERVER_PREFIX}${serverId}`
+				: `${ARCHIVED_SERVER_PREFIX}${serverId}-${n}`;
+		const candidate = path.join(config.serversDir, name);
+		if (!(await exists(candidate))) {
+			return candidate;
+		}
+	}
+}
+
+/**
  * Starts a specific Minecraft server.
  *
  * @param serverId The ID of the server to start.
  * @throws An error if the server fails to start.
  */
 export async function start(serverId: string): Promise<void> {
+	// Same lifecycle queue as config updates and deletes: a delete
+	// running mid-start could confirm an empty stack (the start hasn't
+	// created its containers yet) and remove the directory out from
+	// under it. A start queued behind a delete fails on its own — the
+	// compose file is gone by the time it runs.
+	return enqueueServerOp(serverId, () => applyServerStart(serverId));
+}
+
+/**
+ * Recreates a missing patch file and brings the stack up, see
+ * {@link start}. Must only be called through the per-server lifecycle
+ * queue.
+ */
+async function applyServerStart(serverId: string): Promise<void> {
 	try {
 		const dir = serverPath(serverId);
 		await ensurePatchFileIfMounted(dir);
@@ -1058,6 +1196,12 @@ async function getAllManagedServerPorts(
 
 	for (const file of files) {
 		if (!file.isDirectory()) {
+			continue;
+		}
+
+		// Archived servers are off the roster — their ports are free
+		// to be handed out again.
+		if (file.name.startsWith(ARCHIVED_SERVER_PREFIX)) {
 			continue;
 		}
 

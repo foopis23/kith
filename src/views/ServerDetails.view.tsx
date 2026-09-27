@@ -1,5 +1,6 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { Box, Text, useInput, useStdout } from "ink";
+import BigText from "ink-big-text";
 import TextInput from "ink-text-input";
 import { useEffect, useState } from "react";
 import { useNavigate, useParams } from "react-router";
@@ -7,8 +8,10 @@ import { Form } from "../components/Form.js";
 import { LogBox } from "../components/LogBox.js";
 import { Menu } from "../components/Menu.js";
 import { Screen, StatusDot, useErrorQueue } from "../components/Screen.js";
+import type { KeyHint } from "../components/Screen.js";
 import { useServer } from "../hooks/useServer.js";
 import { useServerConfigFields } from "../hooks/useServerConfigFields.js";
+import type { Server } from "../models/server.model.js";
 import * as BackupService from "../services/backup.service.js";
 import * as ServerService from "../services/server.service.js";
 
@@ -23,12 +26,29 @@ export function ServerDetails() {
 	const queryClient = useQueryClient();
 	const [consoleMode, setConsoleMode] = useState(false);
 	const [configureMode, setConfigureMode] = useState(false);
+	const [deleteMode, setDeleteMode] = useState(false);
 	const config = useServerConfigFields(serverId, configureMode);
 
 	const enableBackups = useMutation({
 		mutationFn: () => ServerService.setServerBackupsEnabled(serverId, true),
 		onSuccess: () =>
 			queryClient.invalidateQueries({ queryKey: ["servers", serverId] }),
+	});
+
+	const deleteServer = useMutation({
+		mutationFn: (mode: ServerService.DeleteServerMode) =>
+			ServerService.deleteServer(serverId, mode),
+		onSuccess: () => {
+			// The server is gone — remove its cached queries outright so
+			// nothing refetches against the deleted directory (invalidate
+			// would refetch the still-mounted detail and status queries),
+			// then refresh the list before landing back on it.
+			queryClient.removeQueries({ queryKey: ["servers", serverId] });
+			queryClient.invalidateQueries({ queryKey: ["servers"] });
+			navigate("/");
+		},
+		onError: (err: unknown) =>
+			pushError(err instanceof Error ? err.message : "Unknown delete failure"),
 	});
 
 	// Backup setup runs docker pulls and a restic init, which can take a
@@ -47,10 +67,21 @@ export function ServerDetails() {
 	// CommandInput owns Escape (it exits the console instead) and in
 	// configure mode where the Form owns Escape (it exits the form instead).
 	// While the config is still loading the Form isn't mounted, so this view
-	// keeps owning Escape to leave configure mode.
+	// keeps owning Escape to leave configure mode. In delete mode Escape
+	// cancels the confirmation — but only while idle: a delete already in
+	// flight can't be cancelled, and resetting it would drop the user back
+	// into the menu of a server that's mid-deletion.
 	useInput(
 		(_, key) => {
 			if (!key.escape) {
+				return;
+			}
+			if (deleteMode) {
+				if (deleteServer.isPending) {
+					return;
+				}
+				setDeleteMode(false);
+				deleteServer.reset();
 				return;
 			}
 			if (configureMode && config.isLoading) {
@@ -134,6 +165,11 @@ export function ServerDetails() {
 					]
 			: []),
 		{
+			label: "Delete",
+			value: "delete",
+			onSelect: () => setDeleteMode(true),
+		},
+		{
 			label: "Back",
 			value: "back",
 			onSelect: () => navigate("/"),
@@ -150,7 +186,7 @@ export function ServerDetails() {
 	const showBackupNotice =
 		BackupService.backupsGloballyEnabled() && server?.backups === "not_set_up";
 	const showBackupSetupStatus = enableBackups.isPending || backupSetupDone;
-	const controlRows = consoleMode ? 3 : items.length;
+	const controlRows = consoleMode ? 3 : deleteMode ? 6 : items.length;
 	// Header, info lines, log borders, hint footer and breathing room.
 	const reserved =
 		controlRows +
@@ -159,6 +195,16 @@ export function ServerDetails() {
 		(server?.backupDrift ? 1 : 0) +
 		(showBackupSetupStatus ? 1 : 0);
 	const maxLines = Math.min(Math.max(1, (stdout?.rows ?? 24) - reserved), 24);
+
+	// While a delete is in flight there is no menu and Escape does
+	// nothing, so don't advertise keys that are dead.
+	const deleteHints: readonly KeyHint[] = deleteServer.isPending
+		? []
+		: [
+				{ key: "↑↓", action: "navigate" },
+				{ key: "enter", action: "confirm" },
+				{ key: "esc", action: "cancel" },
+			];
 
 	function handleSelect(item: (typeof items)[number]) {
 		item.onSelect?.();
@@ -174,12 +220,21 @@ export function ServerDetails() {
 
 	return (
 		<Screen
-			breadcrumbs={["Servers", server.label]}
+			breadcrumbs={
+				deleteMode
+					? ["Servers", server.label, "Delete"]
+					: ["Servers", server.label]
+			}
+			banner={
+				deleteMode ? <BigText text="Delete?" colors={["red"]} /> : undefined
+			}
 			context={
-				<Text>
-					<StatusDot status={status?.status ?? null} />{" "}
-					<Text dimColor>{statusText}</Text>
-				</Text>
+				deleteMode ? undefined : (
+					<Text>
+						<StatusDot status={status?.status ?? null} />{" "}
+						<Text dimColor>{statusText}</Text>
+					</Text>
+				)
 			}
 			hints={
 				configureMode
@@ -194,43 +249,51 @@ export function ServerDetails() {
 								{ key: "enter", action: "send command" },
 								{ key: "esc", action: "exit console" },
 							]
-						: [
-								{ key: "↑↓", action: "navigate" },
-								{ key: "enter", action: "run action" },
-								{ key: "esc", action: "back" },
-							]
+						: deleteMode
+							? deleteHints
+							: [
+									{ key: "↑↓", action: "navigate" },
+									{ key: "enter", action: "run action" },
+									{ key: "esc", action: "back" },
+								]
 			}
 		>
-			<Text dimColor>
-				id: {server.id}
-				{server.port !== undefined ? ` · port: ${server.port}` : ""}
-				{status?.serverInfo ? ` · players: ${playersText}` : ""}
-				{status?.serverInfo ? ` · version: ${versionText}` : ""}
-			</Text>
-			<Text dimColor>dir: {server.dir}</Text>
-			{showBackupNotice && (
-				<Text color="yellow">
-					Backups are enabled globally, but this server isn't set up for them
-					yet.
-				</Text>
+			{!deleteMode && (
+				<>
+					<Text dimColor>
+						id: {server.id}
+						{server.port !== undefined ? ` · port: ${server.port}` : ""}
+						{status?.serverInfo ? ` · players: ${playersText}` : ""}
+						{status?.serverInfo ? ` · version: ${versionText}` : ""}
+					</Text>
+					<Text dimColor>dir: {server.dir}</Text>
+					{showBackupNotice && (
+						<Text color="yellow">
+							Backups are enabled globally, but this server isn't set up for
+							them yet.
+						</Text>
+					)}
+					{server.backupDrift && (
+						<Text color="yellow">
+							{server.backupDrift.globalDisabled
+								? "Backups are disabled globally, but this server still has a backup sidecar — see Backups."
+								: "This server's backup config no longer matches the global config — see Backups."}
+						</Text>
+					)}
+					{enableBackups.isPending && (
+						<Text color="yellow">
+							Setting up backups… (first run pulls the backup image, this can
+							take a minute)
+						</Text>
+					)}
+					{backupSetupDone && !enableBackups.isPending && (
+						<Text color="green">
+							✓ Backups set up — repository initialized.
+						</Text>
+					)}
+				</>
 			)}
-			{server.backupDrift && (
-				<Text color="yellow">
-					{server.backupDrift.globalDisabled
-						? "Backups are disabled globally, but this server still has a backup sidecar — see Backups."
-						: "This server's backup config no longer matches the global config — see Backups."}
-				</Text>
-			)}
-			{enableBackups.isPending && (
-				<Text color="yellow">
-					Setting up backups… (first run pulls the backup image, this can take a
-					minute)
-				</Text>
-			)}
-			{backupSetupDone && !enableBackups.isPending && (
-				<Text color="green">✓ Backups set up — repository initialized.</Text>
-			)}
-			{!configureMode && server.id && (
+			{!configureMode && !deleteMode && server.id && (
 				<LogBox serverId={server.id} maxLines={maxLines} />
 			)}
 
@@ -262,6 +325,17 @@ export function ServerDetails() {
 				<CommandInput
 					serverId={server.id}
 					onEsc={() => setConsoleMode(false)}
+				/>
+			) : deleteMode ? (
+				<DeleteConfirm
+					server={server}
+					isPending={deleteServer.isPending}
+					onArchive={() => deleteServer.mutate("archive")}
+					onDestroy={() => deleteServer.mutate("destroy")}
+					onCancel={() => {
+						setDeleteMode(false);
+						deleteServer.reset();
+					}}
 				/>
 			) : (
 				<Menu items={items} onSelect={handleSelect} />
@@ -312,6 +386,62 @@ function CommandInput({
 			)}
 			{submitCommand.error && (
 				<Text color="red">{submitCommand.error.message}</Text>
+			)}
+		</>
+	);
+}
+
+/**
+ * The delete confirmation: the warnings plus a menu whose default focus
+ * is the safe "No" option, so confirming a destructive choice always
+ * takes deliberate extra input. The screen's banner and breadcrumb
+ * carry the "what is being deleted" context.
+ */
+function DeleteConfirm({
+	server,
+	isPending,
+	onArchive,
+	onDestroy,
+	onCancel,
+}: {
+	server: Server;
+	isPending: boolean;
+	onArchive: () => void;
+	onDestroy: () => void;
+	onCancel: () => void;
+}) {
+	const items = [
+		{ label: "No, keep this server", value: "cancel", onSelect: onCancel },
+		{
+			label: "Yes, archive the server data (kept on disk)",
+			value: "archive",
+			onSelect: onArchive,
+		},
+		{
+			label: "Yes, delete ALL server data (cannot be undone)",
+			value: "destroy",
+			onSelect: onDestroy,
+		},
+	];
+
+	return (
+		<>
+			<Text color="red">
+				Archiving removes the server from kith but keeps its directory on disk,
+				renamed to the hidden .archived.{server.id}.
+			</Text>
+			<Text color="red">
+				Deleting all data permanently erases the server directory — this is not
+				recoverable. Backups are kept either way.
+			</Text>
+			{isPending ? (
+				<Text dimColor>Deleting server…</Text>
+			) : (
+				<Menu
+					items={items}
+					initialIndex={0}
+					onSelect={(item) => item.onSelect()}
+				/>
 			)}
 		</>
 	);
