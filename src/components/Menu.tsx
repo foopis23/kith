@@ -24,6 +24,11 @@ export type MenuProps<T extends { label: string; value: unknown }> = {
 	readonly items: readonly T[];
 	readonly onSelect: (item: T) => void;
 	readonly isFocused?: boolean; // eslint-disable-line react/boolean-prop-naming
+	/**
+	 * Index of the initially-highlighted item. Use this to default the
+	 * focus to the safe option on destructive confirmations.
+	 */
+	readonly initialIndex?: number;
 };
 
 /**
@@ -35,11 +40,13 @@ export function Menu<T extends { label: string; value: unknown }>({
 	items,
 	onSelect,
 	isFocused = true,
+	initialIndex,
 }: MenuProps<T>) {
 	return (
 		<SelectInput
 			items={items as unknown as { label: string; value: unknown }[]}
 			isFocused={isFocused}
+			initialIndex={initialIndex}
 			indicatorComponent={Indicator}
 			itemComponent={Item}
 			// SelectInput passes the item objects through untouched, so the

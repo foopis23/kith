@@ -6,6 +6,7 @@ import YAML from "yaml";
 import type z from "zod";
 import { config, serverPath } from "../lib/config.js";
 import {
+	ARCHIVED_SERVER_PREFIX,
 	DATA_DIR_NAME,
 	MC_SERVICE_NAME,
 	PATCH_FILE_CONTAINER_PATH,
@@ -29,6 +30,7 @@ import {
 	CapturingLogTrailFailedError,
 	type CommandResult,
 	FailedToCreateServerError,
+	FailedToDeleteServerError,
 	FailedToFetchServerConfigError,
 	FailedToFetchServerInfoError,
 	FailedToSendCommandError,
@@ -83,6 +85,10 @@ export async function getServers(): Promise<Server[]> {
 		.filter((file) => file.isDirectory())
 		.map((d) => d.name)
 		.filter((name) => !name.startsWith("."))
+		// Redundant with the dot-filter above (the prefix starts with
+		// ".") — kept as defense-in-depth so archived servers stay off
+		// the roster even if the hidden-file rule ever changes.
+		.filter((name) => !name.startsWith(ARCHIVED_SERVER_PREFIX))
 		.filter((name) => /^[\w.-]+$/.test(name));
 
 	return (
@@ -560,6 +566,68 @@ export async function updateServerBackupsToGlobal(
 		// readable under the new config.
 		await BackupService.initRepository(serverId);
 	});
+}
+
+/**
+ * How a server's directory is treated when the server is deleted:
+ * "archive" renames it to `.archived.<id>` (data kept on disk, server
+ * removed from kith); "destroy" erases it entirely. Restic backup
+ * repositories are never touched — they live outside the server dir.
+ */
+export type DeleteServerMode = "archive" | "destroy";
+
+/**
+ * Deletes a server from kith. The server is stopped first (best-effort,
+ * like {@link stop}), then its directory is either archived or erased
+ * depending on the mode. Archiving is recoverable by hand (rename the
+ * directory back); destroying is not.
+ *
+ * @param serverId The ID of the server to delete.
+ * @param mode Whether to keep the data on disk (archived) or erase it.
+ */
+export async function deleteServer(
+	serverId: string,
+	mode: DeleteServerMode,
+): Promise<void> {
+	const dir = serverPath(serverId);
+
+	// A running stack can't survive its directory being renamed or
+	// deleted out from under it, so bring it down first. Best-effort:
+	// the compose wrapper already swallows docker failures, and a
+	// server that was never started has nothing to bring down.
+	await ComposeService.down({
+		cwd: dir,
+		commandOptions: ["--remove-orphans"],
+	});
+
+	try {
+		if (mode === "archive") {
+			await fs.rename(dir, await availableArchivedPath(serverId));
+		} else {
+			await fs.rm(dir, { recursive: true, force: true });
+		}
+	} catch (err) {
+		const newErr = new FailedToDeleteServerError(serverId, { cause: err });
+		logger.error({ error: newErr }, newErr.message);
+		throw newErr;
+	}
+}
+
+/**
+ * Finds a free `.archived.<id>` directory name, suffixing `-2`, `-3`…
+ * when a previous archive of the same server is still around.
+ */
+async function availableArchivedPath(serverId: string): Promise<string> {
+	for (let n = 1; ; n++) {
+		const name =
+			n === 1
+				? `${ARCHIVED_SERVER_PREFIX}${serverId}`
+				: `${ARCHIVED_SERVER_PREFIX}${serverId}-${n}`;
+		const candidate = path.join(config.serversDir, name);
+		if (!(await exists(candidate))) {
+			return candidate;
+		}
+	}
 }
 
 /**
@@ -1058,6 +1126,12 @@ async function getAllManagedServerPorts(
 
 	for (const file of files) {
 		if (!file.isDirectory()) {
+			continue;
+		}
+
+		// Archived servers are off the roster — their ports are free
+		// to be handed out again.
+		if (file.name.startsWith(ARCHIVED_SERVER_PREFIX)) {
 			continue;
 		}
 

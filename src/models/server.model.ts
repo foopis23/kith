@@ -1121,6 +1121,17 @@ export class InvalidServerConfigPatchError extends Error {
 	}
 }
 
+export class FailedToDeleteServerError extends Error {
+	readonly code = "FAILED_TO_DELETE_SERVER";
+	constructor(
+		readonly serverId: string,
+		errorOptions?: ErrorOptions,
+	) {
+		super(`Failed to delete server "${serverId}"`, errorOptions);
+		this.name = "FailedToDeleteServerError";
+	}
+}
+
 export class FailedToUpdateServerConfigError extends Error {
 	readonly code = "FAILED_TO_UPDATE_SERVER_CONFIG";
 	constructor(
