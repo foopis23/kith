@@ -215,6 +215,8 @@ export type CreateModrinthServerArgs = z.infer<
  * when the config is applied back, so itzg's own defaults keep applying.
  */
 export type ServerConfig = {
+	/** The human-readable label of the server. */
+	label: string | undefined;
 	/** MOTD — the message shown in the multiplayer server list. */
 	motd: string | undefined;
 	/** DIFFICULTY — peaceful, easy, normal or hard. */
@@ -276,6 +278,7 @@ export type ServerConfigPatch = Partial<Omit<ServerConfig, "type" | "modpack">>;
 
 export const serverConfigPatchSchema = z
 	.object({
+		label: z.string().min(1).optional(),
 		motd: z.string().optional(),
 		difficulty: z.enum(difficulties).optional(),
 		hardcore: z.boolean().optional(),
@@ -723,6 +726,7 @@ export class ManagedServer {
 		const type = env.TYPE;
 		return {
 			...this.readEnvFields(),
+			label: this.label,
 			// Creation omits MODRINTH_MODPACK_VERSION for "latest".
 			modpackVersion:
 				type === "MODRINTH"
@@ -769,6 +773,10 @@ export class ManagedServer {
 				// value always matches the codec; the loop can't see it.
 				environment[name] = codec.write(value as never);
 			}
+		}
+
+		if ("label" in patch && patch.label !== undefined) {
+			this.mc.labels["kith.server.label"] = patch.label;
 		}
 
 		// MODRINTH_MODPACK_VERSION only means something to a MODRINTH
