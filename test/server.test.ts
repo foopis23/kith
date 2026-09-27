@@ -141,6 +141,25 @@ describe("ManagedServer.fromCompose", () => {
 		expect(server.nonGameHostPorts).toEqual([40000, 24454]);
 	});
 
+	test("nonGameHostPorts excludes an IP-prefixed game mapping too", () => {
+		const server = ManagedServer.fromCompose("abc", {
+			services: {
+				mc: {
+					image: "itzg/minecraft-server:java21",
+					labels: { "kith.server.label": "Test" },
+					environment: { SERVER_PORT: "25565" },
+					ports: ["127.0.0.1:25565:25565", "24454:24454/udp"],
+				},
+			},
+		});
+		// The game port field still doesn't recognize the prefixed mapping,
+		// but it's the server's own game mapping, so rescanning its ports
+		// must leave 25565 free to be picked again.
+		expect(server.port).toBeUndefined();
+		expect(server.nonGameHostPorts).toEqual([24454]);
+		expect(server.hostPorts).toEqual([25565, 24454]);
+	});
+
 	test("defaults the game container port to 25565 when SERVER_PORT is unset", () => {
 		const server = ManagedServer.fromCompose("abc", {
 			services: {

@@ -397,14 +397,14 @@ type EnvFieldValues = {
 const portMappingPattern = /^(?:(\d+):)?(\d+)(?:\/(?:tcp|udp))?$/;
 
 /**
- * Matches a host-IP-prefixed mapping, capturing the host port:
- * `"127.0.0.1:25565:25565"`, `"[::1]:25565:25565/udp"`. The game port
- * field deliberately doesn't recognize these (see
+ * Matches a host-IP-prefixed mapping, capturing the host port and the
+ * container port: `"127.0.0.1:25565:25565"`, `"[::1]:25565:25565/udp"`.
+ * The game port field deliberately doesn't recognize these (see
  * {@link portMappingPattern}), but they still bind a host port, so
  * port-conflict detection must see them.
  */
 const ipPrefixedPortMappingPattern =
-	/^(?:\d{1,3}(?:\.\d{1,3}){3}|\[[0-9a-fA-F:]+\]):(\d+):\d+(?:\/(?:tcp|udp))?$/;
+	/^(?:\d{1,3}(?:\.\d{1,3}){3}|\[[0-9a-fA-F:]+\]):(\d+):(\d+)(?:\/(?:tcp|udp))?$/;
 
 /** Extracts the container port from a compose port mapping. */
 function containerPortOf(mapping: string): number | undefined {
@@ -413,6 +413,24 @@ function containerPortOf(mapping: string): number | undefined {
 		return undefined;
 	}
 	const parsed = Number.parseInt(match[2], 10);
+	return Number.isNaN(parsed) ? undefined : parsed;
+}
+
+/**
+ * Extracts the container port however the mapping is written, including
+ * the host-IP-prefixed forms {@link containerPortOf} deliberately
+ * ignores. Used only to recognize the game port's own mapping when
+ * excluding it from port-conflict detection — the game port field
+ * itself still treats IP-prefixed mappings as unmanaged.
+ */
+function anyContainerPortOf(mapping: string): number | undefined {
+	const container =
+		portMappingPattern.exec(mapping)?.[2] ??
+		ipPrefixedPortMappingPattern.exec(mapping)?.[2];
+	if (!container) {
+		return undefined;
+	}
+	const parsed = Number.parseInt(container, 10);
 	return Number.isNaN(parsed) ? undefined : parsed;
 }
 
@@ -654,14 +672,16 @@ export class ManagedServer {
 
 	/**
 	 * Every host port this server publishes, excluding the game port's
-	 * mapping. Matched by container port (like the game port field), so
-	 * an unrelated mapping that happens to share the game port's host
-	 * port still counts as used.
+	 * mapping. The game mapping is recognized however it's written —
+	 * plain or host-IP-prefixed — so the server's own game port is free
+	 * to be picked again when its ports are rescanned. An unrelated
+	 * mapping that happens to share the game port's host port still
+	 * counts as used.
 	 */
 	get nonGameHostPorts(): number[] {
 		const containerPort = this.gameContainerPort;
 		return (this.mc.ports ?? [])
-			.filter((mapping) => containerPortOf(mapping) !== containerPort)
+			.filter((mapping) => anyContainerPortOf(mapping) !== containerPort)
 			.map(hostPortOf)
 			.filter((port): port is number => port !== undefined);
 	}
