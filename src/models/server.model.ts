@@ -319,12 +319,7 @@ const intEnvVar = z.coerce.number().int().min(1).optional().catch(undefined);
  * or falls outside the valid port range. The .catch covers undefined
  * input too (coerced to NaN), so no .default is needed.
  */
-const gamePortEnvVar = z.coerce
-	.number()
-	.int()
-	.min(1)
-	.max(65535)
-	.catch(25565);
+const gamePortEnvVar = z.coerce.number().int().min(1).max(65535).catch(25565);
 
 const stringEnv: EnvCodec<string> = {
 	read: (raw) => raw,

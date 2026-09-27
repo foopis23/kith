@@ -108,24 +108,38 @@ const rawResticEnv = z
 	})
 	.parse(process.env);
 
-
 /**
  * Environment variables that need to be forwarded to the backup sidecar.
  */
 export const resticEnv = {
-	AWS_ACCESS_KEY_ID: rawResticEnv.KITH_AWS_ACCESS_KEY_ID ?? rawResticEnv.AWS_ACCESS_KEY_ID,
-	AWS_SECRET_ACCESS_KEY: rawResticEnv.KITH_AWS_SECRET_ACCESS_KEY ?? rawResticEnv.AWS_SECRET_ACCESS_KEY,
+	AWS_ACCESS_KEY_ID:
+		rawResticEnv.KITH_AWS_ACCESS_KEY_ID ?? rawResticEnv.AWS_ACCESS_KEY_ID,
+	AWS_SECRET_ACCESS_KEY:
+		rawResticEnv.KITH_AWS_SECRET_ACCESS_KEY ??
+		rawResticEnv.AWS_SECRET_ACCESS_KEY,
 	B2_ACCOUNT_ID: rawResticEnv.KITH_B2_ACCOUNT_ID ?? rawResticEnv.B2_ACCOUNT_ID,
-	B2_ACCOUNT_KEY: rawResticEnv.KITH_B2_ACCOUNT_KEY ?? rawResticEnv.B2_ACCOUNT_KEY,
-	AZURE_ACCOUNT_NAME: rawResticEnv.KITH_AZURE_ACCOUNT_NAME ?? rawResticEnv.AZURE_ACCOUNT_NAME,
-	AZURE_ACCOUNT_KEY: rawResticEnv.KITH_AZURE_ACCOUNT_KEY ?? rawResticEnv.AZURE_ACCOUNT_KEY,
-	AZURE_ACCOUNT_SAS: rawResticEnv.KITH_AZURE_ACCOUNT_SAS ?? rawResticEnv.AZURE_ACCOUNT_SAS,
-	AZURE_FORCE_CLI_CREDENTIAL: rawResticEnv.KITH_AZURE_FORCE_CLI_CREDENTIAL ?? rawResticEnv.AZURE_FORCE_CLI_CREDENTIAL,
-	AZURE_ENDPOINT_SUFFIX: rawResticEnv.KITH_AZURE_ENDPOINT_SUFFIX ?? rawResticEnv.AZURE_ENDPOINT_SUFFIX,
-	GOOGLE_PROJECT_ID: rawResticEnv.KITH_GOOGLE_PROJECT_ID ?? rawResticEnv.GOOGLE_PROJECT_ID,
-	GOOGLE_APPLICATION_CREDENTIALS: rawResticEnv.KITH_GOOGLE_APPLICATION_CREDENTIALS ?? rawResticEnv.GOOGLE_APPLICATION_CREDENTIALS,
-	GOOGLE_ACCESS_TOKEN: rawResticEnv.KITH_GOOGLE_ACCESS_TOKEN ?? rawResticEnv.GOOGLE_ACCESS_TOKEN,
-}
+	B2_ACCOUNT_KEY:
+		rawResticEnv.KITH_B2_ACCOUNT_KEY ?? rawResticEnv.B2_ACCOUNT_KEY,
+	AZURE_ACCOUNT_NAME:
+		rawResticEnv.KITH_AZURE_ACCOUNT_NAME ?? rawResticEnv.AZURE_ACCOUNT_NAME,
+	AZURE_ACCOUNT_KEY:
+		rawResticEnv.KITH_AZURE_ACCOUNT_KEY ?? rawResticEnv.AZURE_ACCOUNT_KEY,
+	AZURE_ACCOUNT_SAS:
+		rawResticEnv.KITH_AZURE_ACCOUNT_SAS ?? rawResticEnv.AZURE_ACCOUNT_SAS,
+	AZURE_FORCE_CLI_CREDENTIAL:
+		rawResticEnv.KITH_AZURE_FORCE_CLI_CREDENTIAL ??
+		rawResticEnv.AZURE_FORCE_CLI_CREDENTIAL,
+	AZURE_ENDPOINT_SUFFIX:
+		rawResticEnv.KITH_AZURE_ENDPOINT_SUFFIX ??
+		rawResticEnv.AZURE_ENDPOINT_SUFFIX,
+	GOOGLE_PROJECT_ID:
+		rawResticEnv.KITH_GOOGLE_PROJECT_ID ?? rawResticEnv.GOOGLE_PROJECT_ID,
+	GOOGLE_APPLICATION_CREDENTIALS:
+		rawResticEnv.KITH_GOOGLE_APPLICATION_CREDENTIALS ??
+		rawResticEnv.GOOGLE_APPLICATION_CREDENTIALS,
+	GOOGLE_ACCESS_TOKEN:
+		rawResticEnv.KITH_GOOGLE_ACCESS_TOKEN ?? rawResticEnv.GOOGLE_ACCESS_TOKEN,
+};
 
 /**
  * The credential env vars kith forwards to the backup sidecar. Used to
@@ -181,7 +195,7 @@ export function validateConfig(): void {
 	if (config.baseBackupDest && !config.backupPassword) {
 		process.stderr.write(
 			"kith: backups are enabled (KITH_BASE_BACKUP_DEST is set) but KITH_BACKUP_PASSWORD is not.\n" +
-			"Set KITH_BACKUP_PASSWORD to the password for your restic repositories.\n",
+				"Set KITH_BACKUP_PASSWORD to the password for your restic repositories.\n",
 		);
 		process.exit(1);
 	}
@@ -244,7 +258,7 @@ export function validateConfig(): void {
 			const code = (err as NodeJS.ErrnoException).code ?? "unknown error";
 			process.stderr.write(
 				`kith: cannot use directory "${dir}" (${envVar}): ${code}.\n` +
-				`Create it and grant read/write access, or point ${envVar} at a writable directory.\n`,
+					`Create it and grant read/write access, or point ${envVar} at a writable directory.\n`,
 			);
 			process.exit(1);
 		}

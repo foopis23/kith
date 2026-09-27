@@ -1071,7 +1071,9 @@ async function getAllManagedServerPorts(
 		// The excluded server's own game port is free to be picked again;
 		// its other published ports still count as used.
 		const hostPorts =
-			file.name === excludeServerId ? server.nonGameHostPorts : server.hostPorts;
+			file.name === excludeServerId
+				? server.nonGameHostPorts
+				: server.hostPorts;
 		for (const host of hostPorts) {
 			used.add(host);
 		}
