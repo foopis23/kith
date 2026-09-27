@@ -47,6 +47,7 @@ import {
 	ServerDirectoryDoesNotContainComposeFileError,
 	type ServerInfo,
 	ServersDirectoryDoesNotExistError,
+	ServerStackNotDownError,
 	serverConfigPatchSchema,
 	UnexpectedKithComposeConfigError,
 	UnexpectedServerResponseError,
@@ -577,13 +578,15 @@ export async function updateServerBackupsToGlobal(
 export type DeleteServerMode = "archive" | "destroy";
 
 /**
- * Deletes a server from kith. The server is stopped first (best-effort,
- * like {@link stop}), then its directory is either archived or erased
- * depending on the mode. Archiving is recoverable by hand (rename the
- * directory back); destroying is not.
+ * Deletes a server from kith. The server is stopped first, then its
+ * directory is either archived or erased depending on the mode.
+ * Archiving is recoverable by hand (rename the directory back);
+ * destroying is not.
  *
  * @param serverId The ID of the server to delete.
  * @param mode Whether to keep the data on disk (archived) or erase it.
+ * @throws ServerStackNotDownError when the stack can't be confirmed
+ * down — the directory is left untouched in that case.
  */
 export async function deleteServer(
 	serverId: string,
@@ -592,13 +595,24 @@ export async function deleteServer(
 	const dir = serverPath(serverId);
 
 	// A running stack can't survive its directory being renamed or
-	// deleted out from under it, so bring it down first. Best-effort:
-	// the compose wrapper already swallows docker failures, and a
-	// server that was never started has nothing to bring down.
+	// deleted out from under it, so bring it down first.
 	await ComposeService.down({
 		cwd: dir,
 		commandOptions: ["--remove-orphans"],
 	});
+
+	// The compose wrapper swallows docker failures (logged there), so a
+	// resolved down is no proof the stack is actually down — confirm it.
+	// A failed ps means docker is unreachable or the compose file is
+	// broken; a remaining service means down didn't do its job. Either
+	// way, deleting now could rip the data dir out from under live
+	// containers, so refuse and leave the directory untouched.
+	const ps = await ComposeService.ps({ cwd: dir });
+	if (!ps || ps.data.services.length > 0) {
+		const newErr = new ServerStackNotDownError(serverId);
+		logger.error({ error: newErr }, newErr.message);
+		throw newErr;
+	}
 
 	try {
 		if (mode === "archive") {

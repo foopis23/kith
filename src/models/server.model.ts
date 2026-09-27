@@ -1132,6 +1132,20 @@ export class FailedToDeleteServerError extends Error {
 	}
 }
 
+export class ServerStackNotDownError extends Error {
+	readonly code = "SERVER_STACK_NOT_DOWN";
+	constructor(
+		readonly serverId: string,
+		errorOptions?: ErrorOptions,
+	) {
+		super(
+			`Cannot delete server "${serverId}" — could not confirm its containers are stopped. Check that docker is running, stop the server, and try again.`,
+			errorOptions,
+		);
+		this.name = "ServerStackNotDownError";
+	}
+}
+
 export class FailedToUpdateServerConfigError extends Error {
 	readonly code = "FAILED_TO_UPDATE_SERVER_CONFIG";
 	constructor(
