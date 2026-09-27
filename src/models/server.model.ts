@@ -244,6 +244,7 @@ export type ServerConfig = {
 	type: string | undefined;
 	/** MODRINTH_MODPACK — the modpack slug/id. Read-only context. */
 	modpack: string | undefined;
+	maxLogFiles: number | undefined;
 };
 
 /**
@@ -269,6 +270,7 @@ export const serverConfigPatchSchema = z
 		flags: z.enum(flags).optional(),
 		port: z.number().int().min(1).max(65535).optional(),
 		imageTag: z.string().min(1).optional(),
+		maxLogFiles: z.number().int().min(1).optional(),
 	})
 	.strict();
 
