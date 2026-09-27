@@ -259,6 +259,14 @@ export function useServerConfigFields(serverId: string, enabled: boolean) {
 				});
 
 		return [
+			{
+				id: "label",
+				type: "text",
+				label: "Label",
+				value: config?.label ?? "",
+				placeholder: "My Server",
+				onSubmit: (label) => patch({ label: textValue(label) }),
+			},
 			versionField,
 			{
 				id: "motd",
