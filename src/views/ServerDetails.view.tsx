@@ -140,6 +140,7 @@ export function ServerDetails() {
 		},
 	];
 
+	const versionText = status?.serverInfo ? status.serverInfo.version.name : "";
 	const playersText = status?.serverInfo
 		? `${status.serverInfo.players.online}/${status.serverInfo.players.max}`
 		: "";
@@ -204,6 +205,7 @@ export function ServerDetails() {
 				id: {server.id}
 				{server.port !== undefined ? ` · port: ${server.port}` : ""}
 				{status?.serverInfo ? ` · players: ${playersText}` : ""}
+				{status?.serverInfo ? ` · version: ${versionText}` : ""}
 			</Text>
 			<Text dimColor>dir: {server.dir}</Text>
 			{showBackupNotice && (
