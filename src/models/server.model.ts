@@ -438,12 +438,16 @@ function imageTagOf(image: string): string | undefined {
 	return name.slice(separator + 1);
 }
 
-/** Replaces the tag of an image reference, keeping name and registry. */
+/**
+ * Replaces the tag of an image reference, keeping name and registry.
+ * A digest pins exact content, so retagging drops it.
+ */
 function withImageTag(image: string, tag: string): string {
+	const name = image.split("@")[0] ?? image;
 	const current = imageTagOf(image);
 	return current
-		? `${image.slice(0, image.lastIndexOf(":"))}:${tag}`
-		: `${image}:${tag}`;
+		? `${name.slice(0, name.lastIndexOf(":"))}:${tag}`
+		: `${name}:${tag}`;
 }
 
 /** Drops entries whose value is undefined ("unset") from an env map. */

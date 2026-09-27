@@ -331,6 +331,36 @@ describe("ManagedServer.applyConfigPatch", () => {
 		expect(server.imageTag).toBe("java17");
 	});
 
+	test("retagging a digest-pinned image drops the digest", () => {
+		const server = ManagedServer.fromCompose("abc", {
+			services: {
+				mc: {
+					image: "itzg/minecraft-server:java21@sha256:abc123",
+					labels: { "kith.server.label": "Test" },
+				},
+			},
+		});
+		server.applyConfigPatch({ imageTag: "java17" });
+		expect(server.toCompose().services.mc.image).toBe(
+			"itzg/minecraft-server:java17",
+		);
+	});
+
+	test("retagging a digest-only image appends the tag", () => {
+		const server = ManagedServer.fromCompose("abc", {
+			services: {
+				mc: {
+					image: "itzg/minecraft-server@sha256:abc123",
+					labels: { "kith.server.label": "Test" },
+				},
+			},
+		});
+		server.applyConfigPatch({ imageTag: "java17" });
+		expect(server.toCompose().services.mc.image).toBe(
+			"itzg/minecraft-server:java17",
+		);
+	});
+
 	test("mirrors creation's VERSION interplay for modpack versions", () => {
 		const server = ManagedServer.fromCompose("abc", modrinthCompose);
 
