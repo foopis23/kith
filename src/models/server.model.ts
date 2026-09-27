@@ -338,6 +338,19 @@ const intEnv: EnvCodec<number> = {
 };
 
 /**
+ * Compile-time contract for {@link ENV_FIELDS}: every key must be a
+ * patchable config field and the codec's value type must match the
+ * field's type — wiring `hardcore` to `intEnv` fails to compile
+ * instead of writing garbage env vars at runtime.
+ */
+type EnvFieldTable = {
+	[K in keyof ServerConfigPatch]?: readonly [
+		string,
+		EnvCodec<Exclude<ServerConfigPatch[K], undefined>>,
+	];
+};
+
+/**
  * The 1:1 mapping between config fields and itzg env vars. Both reading
  * ({@link ManagedServer.config}) and writing
  * ({@link ManagedServer.applyConfigPatch}) are driven by this table, so
@@ -357,7 +370,7 @@ const ENV_FIELDS = {
 	memory: ["MEMORY", stringEnv],
 	version: ["VERSION", stringEnv],
 	maxLogFiles: ["ROLLING_LOG_MAX_FILES", intEnv],
-} as const;
+} as const satisfies EnvFieldTable;
 
 type EnvFields = typeof ENV_FIELDS;
 
@@ -715,8 +728,8 @@ export class ManagedServer {
 			if (value === undefined) {
 				delete environment[name];
 			} else {
-				// The patch was validated against serverConfigPatchSchema, so
-				// the value always matches the field's codec.
+				// EnvFieldTable ties each codec to its field's type, so the
+				// value always matches the codec; the loop can't see it.
 				environment[name] = codec.write(value as never);
 			}
 		}
