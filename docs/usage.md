@@ -12,6 +12,8 @@ The home screen shows live status and player counts for every server. From here 
 
 The server wizard walks you through creating a server. Based on the server type you choose, it will prompt for the necessary information, such as a modpack link and version for modded servers or minecraft version for vanilla servers.
 
+The port field is optional. Leave it unset and kith assigns the first port in the configured range (`KITH_PORT_RANGE`, default `25565-25665`) that no other managed server is using and that is free on the host. See [Configuration](configuration.md#servers).
+
 ![Creating a server from a Modrinth modpack in the server wizard](./screenshots/kith-create-modrinth.png)
 
 ## Server details

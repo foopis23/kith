@@ -48,6 +48,12 @@ Scope these to backups only: an IAM user limited to the backup bucket, a B2 _app
 
 Both ids are numeric, not names, so they're unambiguous on the host and inside containers. Kith applies the setgid bit to directories it creates so the group propagates to anything created inside them later. See [File ownership and permissions](installation.md#file-ownership-and-permissions).
 
+## Servers
+
+| Variable          | Default       | Description                                             |
+| ----------------- | ------------- | ------------------------------------------------------- |
+| `KITH_PORT_RANGE` | `25565-25665` | Host ports kith allocates game ports from, in `min-max` form. New servers (and servers whose port is unset) get the first port in the range that no other managed server is using and that is free on the host. Creating a server fails if no port in the range is available. |
+
 ## Other
 
 | Variable | Default   | Description                               |
