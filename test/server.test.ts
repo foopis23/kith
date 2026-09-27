@@ -245,6 +245,19 @@ describe("ManagedServer round-tripping", () => {
 		});
 	});
 
+	test("a patch that touches no env vars doesn't add an environment map", () => {
+		const server = ManagedServer.fromCompose("abc", {
+			services: {
+				mc: {
+					image: "itzg/minecraft-server:java21",
+					labels: { "kith.server.label": "Test" },
+				},
+			},
+		});
+		server.applyConfigPatch({ imageTag: "java17" });
+		expect("environment" in server.toCompose().services.mc).toBe(false);
+	});
+
 	test("toCompose returns a deep copy", () => {
 		const server = ManagedServer.fromCompose("abc", vanillaCompose);
 		const compose = server.toCompose();

@@ -551,9 +551,7 @@ export class ManagedServer {
 						EULA: "TRUE",
 						USE_AIKAR_FLAGS: "TRUE",
 						PATCH_DEFINITIONS: PATCH_FILE_CONTAINER_PATH,
-						...(uid >= 0 && gid >= 0
-							? { UID: `${uid}`, GID: `${gid}` }
-							: {}),
+						...(uid >= 0 && gid >= 0 ? { UID: `${uid}`, GID: `${gid}` } : {}),
 						...environment,
 						[GAME_PORT_ENV]: `${port}`,
 					}),
@@ -769,12 +767,16 @@ export class ManagedServer {
 		}
 
 		// The spread preserves every unmanaged property of the service
-		// (labels and all); only the patched slices are replaced.
+		// (labels and all); only the patched slices are replaced. A
+		// service that declared no environment doesn't gain an empty one.
 		this.compose.services[MC_SERVICE_NAME] = {
 			...this.mc,
 			image,
 			ports,
-			environment,
+			...(this.mc.environment !== undefined ||
+			Object.keys(environment).length > 0
+				? { environment }
+				: {}),
 		};
 	}
 
