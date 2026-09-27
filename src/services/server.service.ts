@@ -1062,11 +1062,11 @@ async function getAllManagedServerPorts(
 			continue; // not a managed server — nothing to count
 		}
 
-		for (const host of server.hostPorts) {
-			// The excluded server's own game port is free to be picked again.
-			if (file.name === excludeServerId && host === server.port) {
-				continue;
-			}
+		// The excluded server's own game port is free to be picked again;
+		// its other published ports still count as used.
+		const hostPorts =
+			file.name === excludeServerId ? server.nonGameHostPorts : server.hostPorts;
+		for (const host of hostPorts) {
 			used.add(host);
 		}
 	}

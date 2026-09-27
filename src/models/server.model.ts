@@ -619,6 +619,20 @@ export class ManagedServer {
 	}
 
 	/**
+	 * Every host port this server publishes, excluding the game port's
+	 * mapping. Matched by container port (like the game port field), so
+	 * an unrelated mapping that happens to share the game port's host
+	 * port still counts as used.
+	 */
+	get nonGameHostPorts(): number[] {
+		const containerPort = this.gameContainerPort;
+		return (this.mc.ports ?? [])
+			.filter((mapping) => containerPortOf(mapping) !== containerPort)
+			.map(hostPortOf)
+			.filter((port): port is number => port !== undefined);
+	}
+
+	/**
 	 * The server's backup state: the sidecar's presence wins, otherwise
 	 * the recorded opt-out label, otherwise the server simply predates
 	 * backups.

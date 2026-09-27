@@ -110,6 +110,22 @@ describe("ManagedServer.fromCompose", () => {
 		expect(config.modpackVersion).toBe("latest");
 	});
 
+	test("nonGameHostPorts excludes only the game port's mapping", () => {
+		const server = ManagedServer.fromCompose("abc", {
+			services: {
+				mc: {
+					image: "itzg/minecraft-server:java21",
+					labels: { "kith.server.label": "Test" },
+					environment: { SERVER_PORT: "25565" },
+					ports: ["40000:25565", "40000:40000", "24454:24454/udp"],
+				},
+			},
+		});
+		// The mapping sharing the game mapping's host port still counts
+		// as used — only the game mapping itself is excluded.
+		expect(server.nonGameHostPorts).toEqual([40000, 24454]);
+	});
+
 	test("defaults the game container port to 25565 when SERVER_PORT is unset", () => {
 		const server = ManagedServer.fromCompose("abc", {
 			services: {
