@@ -658,6 +658,12 @@ export class ManagedServer {
 	/**
 	 * The host port publishing the server's game port. Undefined when the
 	 * game port isn't published.
+	 *
+	 * Note the fallback semantics: with SERVER_PORT unset the container
+	 * listens on itzg's default 25565, so any mapping publishing
+	 * container port 25565 genuinely is the game port mapping then —
+	 * even one that was added for another purpose while SERVER_PORT
+	 * pointed elsewhere.
 	 */
 	get port(): number | undefined {
 		return findHostPort(this.mc.ports, this.gameContainerPort);
@@ -803,6 +809,11 @@ export class ManagedServer {
 			);
 
 			if (patch.port === undefined) {
+				// Unpublishing removes the mapping and the SERVER_PORT override,
+				// so the container port falls back to itzg's default — see the
+				// port getter for what that means for leftover 25565 mappings.
+				// The service layer never sends this (it auto-assigns a free
+				// port instead); the model supports it for completeness.
 				ports = others;
 				set(GAME_PORT_ENV, undefined);
 			} else {

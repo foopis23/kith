@@ -392,6 +392,25 @@ describe("ManagedServer.applyConfigPatch", () => {
 		expect(server.gameContainerPort).toBe(25565);
 	});
 
+	test("after unpublishing, a leftover default-port mapping reads as the game port", () => {
+		const server = ManagedServer.fromCompose("abc", {
+			services: {
+				mc: {
+					image: "itzg/minecraft-server:java21",
+					labels: { "kith.server.label": "Test" },
+					environment: { SERVER_PORT: "25566" },
+					ports: ["25566:25566", "25565:25565"],
+				},
+			},
+		});
+		server.applyConfigPatch({ port: undefined });
+		// SERVER_PORT is gone, so the container listens on itzg's default
+		// 25565 — and the leftover mapping publishing container 25565
+		// genuinely is the game port mapping now.
+		expect(server.gameContainerPort).toBe(25565);
+		expect(server.port).toBe(25565);
+	});
+
 	test("replaces the image tag", () => {
 		const server = ManagedServer.fromCompose("abc", vanillaCompose);
 		server.applyConfigPatch({ imageTag: "java17" });
