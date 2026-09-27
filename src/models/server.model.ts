@@ -802,7 +802,7 @@ export class ManagedServer {
 			// rewrites both sides of the mapping.
 			const containerPort = this.gameContainerPort;
 			const others = (this.mc.ports ?? []).filter(
-				(port) => containerPortOf(port) !== containerPort,
+				(port) => anyContainerPortOf(port) !== containerPort,
 			);
 
 			if (patch.port === undefined) {
