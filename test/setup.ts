@@ -21,6 +21,14 @@ if (!process.env.KITH_TEST_WORKDIR) {
 	const workDir = fs.mkdtempSync(
 		path.join(os.tmpdir(), integration ? "kith-backup-test-" : "kith-test-"),
 	);
+	// Remove the work dir when the test process exits, pass or fail, so
+	// plain `bun test` runs don't leak compose fixtures and archived
+	// server data under the system temp dir. (The integration suite
+	// also removes its own dir in afterAll; force makes the second
+	// removal a no-op.)
+	process.on("exit", () => {
+		fs.rmSync(workDir, { recursive: true, force: true });
+	});
 	process.env.KITH_TEST_WORKDIR = workDir;
 	process.env.KITH_SERVERS_DIR = path.join(workDir, "servers");
 	process.env.KITH_LOG_DIR = path.join(workDir, "logs");

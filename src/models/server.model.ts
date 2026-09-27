@@ -1146,6 +1146,21 @@ export class ServerStackNotDownError extends Error {
 	}
 }
 
+export class BackupRepoInsideServerDirError extends Error {
+	readonly code = "BACKUP_REPO_INSIDE_SERVER_DIR";
+	constructor(
+		readonly serverId: string,
+		readonly repoPath: string,
+		errorOptions?: ErrorOptions,
+	) {
+		super(
+			`Cannot delete server "${serverId}" — its backup repository (${repoPath}) is inside the server directory and would be erased with it. Point KITH_BASE_BACKUP_DEST at a location outside the server directory and try again.`,
+			errorOptions,
+		);
+		this.name = "BackupRepoInsideServerDirError";
+	}
+}
+
 export class FailedToUpdateServerConfigError extends Error {
 	readonly code = "FAILED_TO_UPDATE_SERVER_CONFIG";
 	constructor(

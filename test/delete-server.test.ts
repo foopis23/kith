@@ -16,11 +16,16 @@ import YAML from "yaml";
 // undefined (docker unreachable — ps failed), or services still up.
 let psResult: { data: { services: { name: string }[] } } | undefined;
 
+// What the mocked upAll does; tests swap in a deferred to hold a
+// start open while a delete is issued behind it.
+let upAllImpl: () => Promise<void> = async () => undefined;
+
 const realCompose = await import("../src/services/compose.service.js");
 mock.module("../src/services/compose.service.js", () => ({
 	...realCompose,
 	down: async () => undefined,
 	ps: async () => psResult,
+	upAll: async () => upAllImpl(),
 }));
 
 const { ARCHIVED_SERVER_PREFIX, SERVER_LABEL } = await import(
@@ -29,6 +34,9 @@ const { ARCHIVED_SERVER_PREFIX, SERVER_LABEL } = await import(
 const { config, serverPath } = await import("../src/lib/config.js");
 const { exists } = await import("../src/lib/fs.js");
 const { FailedToDeleteServerError, ServerStackNotDownError } = await import(
+	"../src/models/server.model.js"
+);
+const { BackupRepoInsideServerDirError } = await import(
 	"../src/models/server.model.js"
 );
 const ServerService = await import("../src/services/server.service.js");
@@ -69,6 +77,7 @@ function archivedPath(id: string, suffix = ""): string {
 
 beforeEach(() => {
 	psResult = { data: { services: [] } };
+	upAllImpl = async () => undefined;
 });
 
 describe("deleteServer", () => {
@@ -116,6 +125,73 @@ describe("deleteServer", () => {
 		const dir = await writeServer("gone", 40005);
 		await ServerService.deleteServer("gone", "destroy");
 		expect(await exists(dir)).toBe(false);
+	});
+
+	test("delete waits for an in-flight start before touching the directory", async () => {
+		// The start holds upAll open; the delete must queue behind it
+		// rather than confirm an empty stack mid-start and remove the
+		// directory out from under the starting containers.
+		const dir = await writeServer("mid-start", 40008);
+		let releaseStart: () => void = () => {};
+		upAllImpl = () =>
+			new Promise<void>((resolve) => {
+				releaseStart = resolve;
+			});
+
+		const startPromise = ServerService.start("mid-start");
+		const deletePromise = ServerService.deleteServer("mid-start", "destroy");
+
+		// Give the queue a chance to run: without serialization the
+		// delete would have removed the directory by now.
+		await new Promise((resolve) => setTimeout(resolve, 50));
+		expect(await exists(dir)).toBe(true);
+
+		releaseStart();
+		await startPromise;
+		await deletePromise;
+		expect(await exists(dir)).toBe(false);
+	});
+
+	test("refuses to destroy when the backup repository is inside the server dir", async () => {
+		// A local KITH_BASE_BACKUP_DEST nested under the server
+		// directory puts the restic repo in the path of the recursive
+		// removal — the destroy must refuse and leave everything
+		// untouched. The unit env has no backup dest configured, so
+		// point the shared config at one for this test only.
+		const dir = await writeServer("nested-backups", 40009);
+		const mutableConfig = config as { baseBackupDest?: string };
+		mutableConfig.baseBackupDest = path.join(dir, "backups");
+		try {
+			await expect(
+				ServerService.deleteServer("nested-backups", "destroy"),
+			).rejects.toBeInstanceOf(BackupRepoInsideServerDirError);
+			expect(await exists(dir)).toBe(true);
+		} finally {
+			mutableConfig.baseBackupDest = undefined;
+		}
+	});
+
+	test("archive is allowed when the backup repository is inside the server dir", async () => {
+		// Archiving only renames the directory — the nested repository
+		// moves with it but stays on disk, so the "backups are kept"
+		// promise holds and no refusal is needed.
+		const dir = await writeServer("archive-nested-backups", 40010);
+		const mutableConfig = config as { baseBackupDest?: string };
+		mutableConfig.baseBackupDest = path.join(dir, "backups");
+		try {
+			await ServerService.deleteServer("archive-nested-backups", "archive");
+			expect(await exists(dir)).toBe(false);
+			expect(
+				await exists(
+					path.join(
+						archivedPath("archive-nested-backups"),
+						"docker-compose.yml",
+					),
+				),
+			).toBe(true);
+		} finally {
+			mutableConfig.baseBackupDest = undefined;
+		}
 	});
 
 	test("refuses to delete when docker can't confirm the stack is down", async () => {
