@@ -7,7 +7,7 @@ Kith is configured entirely through environment variables. See [Installation](in
 | Variable            | Default                  | Description                                             |
 | ------------------- | ------------------------ | ------------------------------------------------------- |
 | `KITH_SERVERS_DIR`  | `$XDG_DATA_HOME/kith/servers` (`~/.local/share/kith/servers`) | Where server compose projects and world data live. Each server gets a subdirectory holding its `docker-compose.yml`, `patches.json`, and `data/` volume. |
-| `KITH_LOG_DIR`      | `$XDG_STATE_HOME/kith/logs` (`~/.local/state/kith/logs`) | Application log directory. Kith writes `app.log` here. |
+| `KITH_LOG_DIR`      | `$XDG_STATE_HOME/kith/logs` (`~/.local/state/kith/logs`) | Application log directory. Kith writes `kith.log` here and rolls it daily into `kith.<yyyy.MM.dd>.log` files, keeping the last 90 and deleting older ones. |
 | `KITH_CACHE_DIR`    | `$XDG_CACHE_HOME/kith` (`~/.cache/kith`) | Download cache for version manifests and Java version and image-tag lookups. Everything in it is re-downloaded when missing or stale, so deleting it is always safe. |
 | `KITH_TMP_FILE_DIR` | `$TMPDIR/kith`           | Scratch space for genuinely temporary files (backup-migration password files). On the OS tmp dir, so it's wiped on reboot. |
 
@@ -60,4 +60,4 @@ Both ids are numeric, not names, so they're unambiguous on the host and inside c
 
 | Variable | Default   | Description                               |
 | -------- | --------- | ----------------------------------------- |
-| `DEBUG`  | _(unset)_ | Set to any value for debug-level logging to `app.log`. |
+| `DEBUG`  | _(unset)_ | Set to any value for debug-level logging to `kith.log`. |
